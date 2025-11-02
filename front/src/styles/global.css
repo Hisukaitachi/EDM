@@ -1,0 +1,75 @@
+/* -------------------- Font Import -------------------- */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+/* -------------------- Tailwind Directives -------------------- */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* -------------------- Global Body Styling -------------------- */
+body {
+  margin: 0;
+  font-family: 'Inter', sans-serif;
+  background-color: #f9fafb;
+}
+
+/* -------------------- Sidebar Transition -------------------- */
+.sidebar {
+  transition: all 0.3s ease-in-out;
+}
+
+/* -------------------- Gradient Background -------------------- */
+.gradient-bg {
+  background: linear-gradient(135deg, #6B73FF 0%, #000DFF 100%);
+  color: white;
+}
+
+/* -------------------- Card Hover Effect -------------------- */
+.card-hover {
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+.card-hover:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
+}
+
+/* -------------------- Input Field Focus -------------------- */
+.input-field {
+  transition: all 0.3s ease;
+}
+.input-field:focus {
+  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.2);
+  outline: none;
+}
+
+/* -------------------- Button Primary -------------------- */
+.btn-primary {
+  transition: all 0.3s ease;
+  background-color: #4F46E5;
+  color: white;
+}
+.btn-primary:hover {
+  transform: translateY(-1px);
+  background-color: #4338CA;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+/* -------------------- Role Selector -------------------- */
+.role-selector {
+  transition: all 0.3s ease;
+  border: 1px solid #d1d5db;
+  cursor: pointer;
+}
+.role-selector.active {
+  background-color: #4F46E5;
+  color: white;
+  border-color: #4F46E5;
+}
+
+/* -------------------- Utility: Centered Container -------------------- */
+.container-centered {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 2rem;
+}
+

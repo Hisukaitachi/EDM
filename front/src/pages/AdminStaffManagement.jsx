@@ -17,7 +17,6 @@ const AdminStaffManagement = ({ onNavigate }) => {
   const [currentStaff, setCurrentStaff] = useState(null);
   const [formData, setFormData] = useState({
     username: '',
-    email: '',
     password: '',
     role: 'staff',
     fullName: '',
@@ -48,7 +47,6 @@ const AdminStaffManagement = ({ onNavigate }) => {
 
   const filteredStaff = staffList.filter((staff) => {
     const matchesSearch = staff.username?.toLowerCase().includes(search.toLowerCase()) ||
-                         staff.email?.toLowerCase().includes(search.toLowerCase()) ||
                          staff.fullName?.toLowerCase().includes(search.toLowerCase());
     const matchesRole = roleFilter === 'All Roles' || staff.role === roleFilter;
     return matchesSearch && matchesRole;
@@ -61,7 +59,6 @@ const AdminStaffManagement = ({ onNavigate }) => {
     if (mode === 'edit' && staff) {
       setFormData({
         username: staff.username || '',
-        email: staff.email || '',
         password: '',
         role: staff.role || 'staff',
         fullName: staff.fullName || '',
@@ -70,7 +67,6 @@ const AdminStaffManagement = ({ onNavigate }) => {
     } else {
       setFormData({
         username: '',
-        email: '',
         password: '',
         role: 'staff',
         fullName: '',
@@ -87,7 +83,7 @@ const AdminStaffManagement = ({ onNavigate }) => {
   };
 
   const handleSubmit = async () => {
-    if (!formData.username || !formData.email || (modalMode === 'add' && !formData.password)) {
+    if (!formData.username || (modalMode === 'add' && !formData.password)) {
       alert('Please fill in all required fields');
       return;
     }
@@ -216,7 +212,7 @@ const AdminStaffManagement = ({ onNavigate }) => {
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
-                  {['Username', 'Full Name', 'Email', 'Role', 'Phone', 'Status', 'Actions'].map((h) => (
+                  {['Username', 'Full Name', 'Role', 'Phone', 'Status', 'Actions'].map((h) => (
                     <th key={h} className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{h}</th>
                   ))}
                 </tr>
@@ -226,7 +222,6 @@ const AdminStaffManagement = ({ onNavigate }) => {
                   <tr key={staff.id}>
                     <td className="px-6 py-4 text-sm font-medium">{staff.username}</td>
                     <td className="px-6 py-4 text-sm">{staff.fullName || 'N/A'}</td>
-                    <td className="px-6 py-4 text-sm">{staff.email}</td>
                     <td className="px-6 py-4 text-sm">
                       <span className="px-2 py-1 bg-blue-100 text-blue-800 text-xs font-semibold rounded-full capitalize">
                         {staff.role}
@@ -280,7 +275,7 @@ const AdminStaffManagement = ({ onNavigate }) => {
                 </button>
               </div>
               
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
                   <label className="block text-sm font-medium mb-1">Username*</label>
                   <input
@@ -293,13 +288,6 @@ const AdminStaffManagement = ({ onNavigate }) => {
                 </div>
                 
                 <div>
-                  <label className="block text-sm font-medium mb-1">Email*</label>
-                  <input
-                    type="email"
-                    className="w-full border rounded-lg px-3 py-2"
-                    value={formData.email}
-                    onChange={(e) => setFormData({...formData, email: e.target.value})}
-                  />
                 </div>
                 
                 <div>

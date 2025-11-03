@@ -1,3 +1,4 @@
+// front/src/services/requestService.js
 import api from '../api/api';
 
 const requestService = {
@@ -17,19 +18,32 @@ const requestService = {
     return response.data;
   },
 
-  // Create new request
+  // Create new request (Staff)
   create: async (requestData) => {
-    const response = await api.post('/requests', requestData);
+    // Backend expects: { inventoryId, quantity, reason }
+    const backendData = {
+      inventoryId: parseInt(requestData.inventoryId),
+      quantity: parseInt(requestData.quantity),
+      reason: requestData.reason || ''
+    };
+    
+    const response = await api.post('/requests', backendData);
     return response.data;
   },
 
-  // Process request (approve/reject)
+  // Process request (Admin approve/reject)
   process: async (id, processData) => {
-    const response = await api.put(`/requests/${id}/process`, processData);
+    // Backend expects: { status: 'approved' | 'rejected', notes: string }
+    const backendData = {
+      status: processData.status.toLowerCase(), // Backend uses lowercase
+      notes: processData.notes || ''
+    };
+    
+    const response = await api.put(`/requests/${id}/process`, backendData);
     return response.data;
   },
 
-  // Get my requests
+  // Get my requests (Staff)
   getMyRequests: async () => {
     const response = await api.get('/requests/my-requests');
     return response.data;

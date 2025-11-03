@@ -7,17 +7,22 @@ const { isAdmin } = require('../middleware/roleMiddleware');
 // All routes require authentication
 router.use(authenticateToken);
 
+// IMPORTANT: Specific routes MUST come BEFORE parameterized routes!
+// Otherwise /:id will catch everything including '/alerts/low-stock'
+
+// Get low stock alerts (Staff & Admin) - MOVED UP
+router.get('/alerts/low-stock', inventoryController.getLowStock);
+
 // Get all inventory (Staff & Admin)
 router.get('/', inventoryController.getAll);
 
-// Get single item (Staff & Admin)
-router.get('/:id', inventoryController.getById);
-
-// Get low stock alerts (Staff & Admin)
-router.get('/alerts/low-stock', inventoryController.getLowStock);
-
 // Admin only routes
 router.post('/', isAdmin, inventoryController.create);
+
+// Get single item (Staff & Admin) - MOVED DOWN to avoid catching other routes
+router.get('/:id', inventoryController.getById);
+
+// More admin routes
 router.put('/:id', isAdmin, inventoryController.update);
 router.post('/:id/stock', isAdmin, inventoryController.updateStock);
 router.delete('/:id', isAdmin, inventoryController.delete);

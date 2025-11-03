@@ -1,5 +1,5 @@
 const userModel = require('../models/userModel');
-const bcrypt = require('bcryptjs');
+const bcrypt = require('bcrypt'); // Changed from 'bcryptjs' to match authService
 
 const userService = {
   // Get all users
@@ -24,6 +24,11 @@ const userService = {
       throw new Error('Username already exists');
     }
 
+    // Validate role
+    if (!['admin', 'staff'].includes(role)) {
+      throw new Error('Invalid role. Must be admin or staff');
+    }
+
     // Hash password
     const salt = await bcrypt.genSalt(10);
     const passwordHash = await bcrypt.hash(password, salt);
@@ -40,9 +45,15 @@ const userService = {
       throw new Error('Status must be active or inactive');
     }
 
+    // Check if user exists first
+    const user = await userModel.findById(userId);
+    if (!user) {
+      throw new Error('User not found');
+    }
+
     const result = await userModel.updateStatus(userId, status);
     if (result === 0) {
-      throw new Error('User not found');
+      throw new Error('Failed to update user status');
     }
 
     return { message: `User ${status === 'active' ? 'activated' : 'deactivated'} successfully` };

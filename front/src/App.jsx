@@ -13,6 +13,8 @@ import AdminReports from './pages/AdminReports';
 
 import StaffDashboard from './pages/StaffDashboard';
 import StaffRequestStock from './pages/StaffRequestStock';
+import StaffMyRequests from './pages/StaffMyRequests';
+import StaffInventory from './pages/StaffInventory';
 
 import './styles/global.css';
 
@@ -35,6 +37,9 @@ function App() {
           {/* Staff Placeholder */}
           <Route path="/staff/dashboard" element={<StaffDashboard/>} />
           <Route path="/staff/request-stock" element={<StaffRequestStock/>} />
+          <Route path="/staff/my-requests" element={<StaffMyRequests/>} />
+          <Route path="/staff/inventory" element={<StaffInventory/>} />
+          
           {/* Catch all */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

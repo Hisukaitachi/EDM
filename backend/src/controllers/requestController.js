@@ -48,10 +48,25 @@ const requestController = {
     try {
       const { inventoryId, quantity, reason } = req.body;
 
-      if (!inventoryId || !quantity) {
+      // Improved validation
+      if (!inventoryId) {
         return res.status(400).json({
           success: false,
-          message: 'Inventory ID and quantity are required'
+          message: 'Inventory ID is required'
+        });
+      }
+
+      if (quantity === undefined || quantity === null) {
+        return res.status(400).json({
+          success: false,
+          message: 'Quantity is required'
+        });
+      }
+
+      if (quantity <= 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'Quantity must be greater than 0'
         });
       }
 
@@ -74,46 +89,40 @@ const requestController = {
 
   // PUT /api/requests/:id/process (Admin approves/rejects)
   process: async (req, res, next) => {
-  try {
-    // Debug log
-    console.log('Request body:', req.body);
-    console.log('Request params:', req.params);
-    console.log('Request user:', req.user);
+    try {
+      // Check if body exists
+      if (!req.body || Object.keys(req.body).length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'Request body is empty. Make sure Content-Type is application/json'
+        });
+      }
 
-    // Check if body exists
-    if (!req.body || Object.keys(req.body).length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'Request body is empty. Make sure Content-Type is application/json'
+      const { status, notes } = req.body;
+
+      if (!status || !['approved', 'rejected'].includes(status)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Valid status (approved/rejected) is required'
+        });
+      }
+
+      const result = await requestService.processRequest(
+        req.params.id,
+        req.user.userId,
+        status,
+        notes || ''
+      );
+
+      res.json({
+        success: true,
+        message: `Request ${status} successfully`,
+        data: result
       });
+    } catch (error) {
+      next(error);
     }
-
-    const { status, notes } = req.body;
-
-    if (!status || !['approved', 'rejected'].includes(status)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Valid status (approved/rejected) is required',
-        received: { status, notes }
-      });
-    }
-
-    const result = await requestService.processRequest(
-      req.params.id,
-      req.user.userId,
-      status,
-      notes || ''
-    );
-
-    res.json({
-      success: true,
-      message: `Request ${status} successfully`,
-      data: result
-    });
-  } catch (error) {
-    next(error);
-  }
-},
+  },
 
   // GET /api/requests/stats/pending
   getPendingCount: async (req, res, next) => {

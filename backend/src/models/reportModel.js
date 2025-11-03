@@ -7,13 +7,13 @@ const reportModel = {
       'CALL sp_GetStaffPerformanceReport(?, ?)',
       [startDate, endDate]
     );
-    return rows[0];
+    return rows[0] || [];
   },
 
   // Low Stock Report
   getLowStockReport: async () => {
     const [rows] = await db.query('CALL sp_GetLowStockReport()');
-    return rows[0];
+    return rows[0] || [];
   },
 
   // Most Requested Items Report
@@ -22,13 +22,13 @@ const reportModel = {
       'CALL sp_GetMostRequestedItemsReport(?, ?, ?)',
       [startDate, endDate, limit]
     );
-    return rows[0];
+    return rows[0] || [];
   },
 
   // Inventory Valuation Report
   getInventoryValuation: async () => {
     const [rows] = await db.query('CALL sp_GetInventoryValuationReport()');
-    return rows[0];
+    return rows[0] || [];
   },
 
   // Monthly Stock Movement Report
@@ -37,7 +37,7 @@ const reportModel = {
       'CALL sp_GetMonthlyStockMovementReport(?, ?)',
       [year, month]
     );
-    return rows[0];
+    return rows[0] || [];
   },
 
   // Request Approval Time Report
@@ -46,7 +46,7 @@ const reportModel = {
       'CALL sp_GetRequestApprovalTimeReport(?, ?)',
       [startDate, endDate]
     );
-    return rows[0];
+    return rows[0] || [];
   },
 
   // Inventory Turnover Report
@@ -55,7 +55,7 @@ const reportModel = {
       'CALL sp_GetInventoryTurnoverReport(?, ?)',
       [startDate, endDate]
     );
-    return rows[0];
+    return rows[0] || [];
   },
 
   // Daily Activity Report
@@ -64,13 +64,21 @@ const reportModel = {
       'CALL sp_GetDailyActivityReport(?)',
       [date]
     );
-    return rows[0];
+    return rows[0] || [];
   },
 
   // Dashboard Analytics
   getDashboardAnalytics: async () => {
     const [rows] = await db.query('CALL sp_GetDashboardAnalytics()');
-    return rows[0];
+    // This procedure returns multiple result sets
+    // Return all of them as an object
+    return {
+      totalProducts: rows[0]?.[0]?.total_products || 0,
+      lowStockItems: rows[1]?.[0]?.low_stock_items || 0,
+      pendingRequests: rows[2]?.[0]?.pending_requests || 0,
+      totalInventoryValue: rows[3]?.[0]?.total_inventory_value || 0,
+      recentTransactions: rows[4]?.[0]?.recent_transactions || 0
+    };
   }
 };
 

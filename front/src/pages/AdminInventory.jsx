@@ -3,8 +3,9 @@ import { Package, Plus, RefreshCw, AlertCircle, X, Edit2, Trash2 } from 'react-f
 import AdminSidebar from '../components/AdminSidebar';
 import inventoryService from '../services/inventoryService';
 import authService from '../services/authService';
+import dataMapper from '../utils/dataMapper';
 
-const AdminInventory = ({ onNavigate, onLogout }) => {
+const AdminInventory = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [inventory, setInventory] = useState([]);
@@ -22,7 +23,7 @@ const AdminInventory = ({ onNavigate, onLogout }) => {
   const [formData, setFormData] = useState({
     name: '',
     code: '',
-    category: '',
+    categoryId: '',
     stock: 0,
     threshold: 10,
     unit: 'pcs',
@@ -43,11 +44,15 @@ const AdminInventory = ({ onNavigate, onLogout }) => {
         inventoryService.getCategories()
       ]);
       
-      setInventory(inventoryRes.data || []);
-      setCategories(categoriesRes.data || []);
+      // Map backend data to frontend format
+      const mappedInventory = dataMapper.mapInventoryList(inventoryRes.data);
+      const mappedCategories = dataMapper.mapCategoryList(categoriesRes.data);
+      
+      setInventory(mappedInventory);
+      setCategories(mappedCategories);
     } catch (err) {
       console.error('Inventory fetch error:', err);
-      setError(err.message || 'Failed to load inventory');
+      setError(err.response?.data?.message || err.message || 'Failed to load inventory');
     } finally {
       setLoading(false);
     }
@@ -78,7 +83,7 @@ const AdminInventory = ({ onNavigate, onLogout }) => {
       setFormData({
         name: item.name || '',
         code: item.code || '',
-        category: item.category || '',
+        categoryId: item.categoryId || '',
         stock: item.stock || 0,
         threshold: item.threshold || 10,
         unit: item.unit || 'pcs',
@@ -89,7 +94,7 @@ const AdminInventory = ({ onNavigate, onLogout }) => {
       setFormData({
         name: '',
         code: '',
-        category: '',
+        categoryId: '',
         stock: 0,
         threshold: 10,
         unit: 'pcs',
@@ -107,7 +112,7 @@ const AdminInventory = ({ onNavigate, onLogout }) => {
   };
 
   const handleSubmit = async () => {
-    if (!formData.name || !formData.code || !formData.category) {
+    if (!formData.name || !formData.code || !formData.categoryId) {
       alert('Please fill in all required fields');
       return;
     }
@@ -127,7 +132,7 @@ const AdminInventory = ({ onNavigate, onLogout }) => {
       fetchInventory();
     } catch (err) {
       console.error('Submit error:', err);
-      alert(err.message || 'Operation failed');
+      alert(err.response?.data?.message || err.message || 'Operation failed');
     } finally {
       setSubmitting(false);
     }
@@ -142,7 +147,7 @@ const AdminInventory = ({ onNavigate, onLogout }) => {
       fetchInventory();
     } catch (err) {
       console.error('Delete error:', err);
-      alert(err.message || 'Failed to delete item');
+      alert(err.response?.data?.message || err.message || 'Failed to delete item');
     }
   };
 
@@ -157,15 +162,18 @@ const AdminInventory = ({ onNavigate, onLogout }) => {
     }
 
     try {
+      // Calculate the change needed
+      const change = quantity - item.stock;
       await inventoryService.updateStock(item.id, { 
-        quantity,
-        type: 'set'
+        quantity: Math.abs(change),
+        type: change >= 0 ? 'add' : 'remove',
+        notes: `Stock adjusted from ${item.stock} to ${quantity}`
       });
       alert('Stock updated successfully!');
       fetchInventory();
     } catch (err) {
       console.error('Stock update error:', err);
-      alert(err.message || 'Failed to update stock');
+      alert(err.response?.data?.message || err.message || 'Failed to update stock');
     }
   };
 
@@ -183,7 +191,7 @@ const AdminInventory = ({ onNavigate, onLogout }) => {
   return (
     <div className="min-h-screen flex bg-gray-100 font-sans">
       <AdminSidebar/>
-      {/* Main Content */}
+      
       <main className="ml-64 flex-1 p-8">
         <div className="flex justify-between items-center mb-8">
           <div>
@@ -370,12 +378,12 @@ const AdminInventory = ({ onNavigate, onLogout }) => {
                   <label className="block text-sm font-medium mb-1">Category*</label>
                   <select
                     className="w-full border rounded-lg px-3 py-2"
-                    value={formData.category}
-                    onChange={(e) => setFormData({...formData, category: e.target.value})}
+                    value={formData.categoryId}
+                    onChange={(e) => setFormData({...formData, categoryId: e.target.value})}
                   >
                     <option value="">Select Category</option>
                     {categories.map(cat => (
-                      <option key={cat.id} value={cat.name}>{cat.name}</option>
+                      <option key={cat.id} value={cat.id}>{cat.name}</option>
                     ))}
                   </select>
                 </div>

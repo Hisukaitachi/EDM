@@ -6,12 +6,13 @@ import requestService from '../services/requestService';
 import inventoryService from '../services/inventoryService';
 import userService from '../services/userService';
 import authService from '../services/authService';
+import dataMapper from '../utils/dataMapper';
 import { 
   LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid, ResponsiveContainer, 
   PieChart, Pie, Cell, BarChart, Bar, Legend, AreaChart, Area 
 } from 'recharts';
 
-const AdminReports = ({ onNavigate }) => {
+const AdminReports = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -72,15 +73,18 @@ const AdminReports = ({ onNavigate }) => {
           endDate: endDate.toISOString().split('T')[0]
         }),
         reportService.getInventoryValuation().catch(() => ({ data: { totalValue: 0 } })),
-        userService.getStaffList()
+        userService.getStaffList().catch(() => ({ data: [] }))
       ]);
 
+      // Map dashboard analytics
+      const analytics = dataMapper.mapDashboardAnalytics(dashboardRes.data);
+      
       // Set KPIs
       setKpis({
-        totalItems: dashboardRes.data?.totalItems || 0,
-        pendingRequests: dashboardRes.data?.pendingRequests || 0,
-        lowStockItems: dashboardRes.data?.lowStockItems || 0,
-        activeStaff: staffRes.data?.length || 0
+        totalItems: analytics.totalItems,
+        pendingRequests: analytics.pendingRequests,
+        lowStockItems: analytics.lowStockItems,
+        activeStaff: Array.isArray(staffRes.data) ? staffRes.data.length : 0
       });
 
       // Process stock trend data
@@ -92,9 +96,9 @@ const AdminReports = ({ onNavigate }) => {
         setStockTrend(trendData);
       }
 
-      // Process request status data
-      const requests = requestsRes.data || [];
-      const statusCounts = requests.reduce((acc, req) => {
+      // Map and process request data
+      const mappedRequests = dataMapper.mapStockRequestList(requestsRes.data);
+      const statusCounts = mappedRequests.reduce((acc, req) => {
         acc[req.status] = (acc[req.status] || 0) + 1;
         return acc;
       }, { Approved: 0, Pending: 0, Rejected: 0 });
@@ -106,7 +110,7 @@ const AdminReports = ({ onNavigate }) => {
       ]);
 
       // Calculate monthly stats
-      const totalRequests = requests.length;
+      const totalRequests = mappedRequests.length;
       const approvedRequests = statusCounts.Approved;
       const approvalRate = totalRequests > 0 ? ((approvedRequests / totalRequests) * 100).toFixed(1) : 0;
 
@@ -123,21 +127,29 @@ const AdminReports = ({ onNavigate }) => {
           endDate: endDate.toISOString().split('T')[0],
           limit: 10
         });
-        setTopItems(topRes.data || []);
+        
+        // Transform the data for the chart
+        const topItemsData = (topRes.data || []).map(item => ({
+          name: item.product_name || item.productName || item.name || 'Unknown',
+          count: item.request_count || item.requestCount || item.count || 0,
+          product_code: item.product_code || item.productCode || item.code
+        }));
+        
+        setTopItems(topItemsData);
       } catch (err) {
-        console.warn('Could not load top items');
+        console.warn('Could not load top items:', err);
         setTopItems([]);
       }
 
       // Set recent activity
-      setRecentActivity(requests.slice(0, 10));
+      setRecentActivity(mappedRequests.slice(0, 10));
 
       // Set inventory valuation
-      setInventoryValuation(valuationRes.data?.totalValue || 0);
+      setInventoryValuation(valuationRes.data?.totalValue || valuationRes.data?.total_value || 0);
 
     } catch (err) {
       console.error('Report load error:', err);
-      setError(err.message || 'Failed to load report data');
+      setError(err.response?.data?.message || err.message || 'Failed to load report data');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -151,7 +163,8 @@ const AdminReports = ({ onNavigate }) => {
   const handleExportData = () => {
     // Create CSV data
     const csvData = [
-      ['Report Generated:', new Date().toLocaleString()],
+      ['StockPro Analytics Report'],
+      ['Generated:', new Date().toLocaleString()],
       ['Date Range:', dateRange],
       [''],
       ['KPI Summary'],
@@ -165,7 +178,15 @@ const AdminReports = ({ onNavigate }) => {
       ['Request Statistics'],
       ['Total Requests', monthlyStats.totalRequests],
       ['Approved Requests', monthlyStats.approvedRequests],
-      ['Approval Rate', `${monthlyStats.approvalRate}%`]
+      ['Approval Rate', `${monthlyStats.approvalRate}%`],
+      [''],
+      ['Request Status Distribution'],
+      ['Status', 'Count'],
+      ...requestStatus.map(item => [item.label, item.value]),
+      [''],
+      ['Top Requested Items'],
+      ['Product Name', 'Request Count', 'Product Code'],
+      ...topItems.slice(0, 10).map(item => [item.name, item.count, item.product_code || 'N/A'])
     ];
 
     const csv = csvData.map(row => row.join(',')).join('\n');
@@ -173,8 +194,9 @@ const AdminReports = ({ onNavigate }) => {
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `stockpro-report-${new Date().toISOString().split('T')[0]}.csv`;
+    a.download = `stockpro-analytics-${new Date().toISOString().split('T')[0]}.csv`;
     a.click();
+    window.URL.revokeObjectURL(url);
   };
 
   if (loading) {
@@ -191,7 +213,7 @@ const AdminReports = ({ onNavigate }) => {
   return (
     <div className="min-h-screen flex bg-gray-100 font-sans">
       <AdminSidebar/>
-      {/* Main Content */}
+      
       <main className="ml-64 flex-1 p-8">
         {/* Header */}
         <div className="flex justify-between items-center mb-8">
@@ -222,7 +244,7 @@ const AdminReports = ({ onNavigate }) => {
             <button 
               onClick={() => fetchReportData(true)}
               disabled={refreshing}
-              className="p-2 rounded-lg hover:bg-gray-200 transition"
+              className="p-2 rounded-lg hover:bg-gray-200 transition disabled:opacity-50"
             >
               <RefreshCw className={refreshing ? 'animate-spin' : ''} size={20} />
             </button>
@@ -235,6 +257,12 @@ const AdminReports = ({ onNavigate }) => {
             <div>
               <h3 className="font-semibold text-red-800">Error</h3>
               <p className="text-red-700 text-sm">{error}</p>
+              <button 
+                onClick={() => fetchReportData(true)}
+                className="text-red-600 text-sm underline mt-2 hover:text-red-800"
+              >
+                Try again
+              </button>
             </div>
           </div>
         )}
@@ -292,14 +320,17 @@ const AdminReports = ({ onNavigate }) => {
           <div className="bg-white rounded-lg shadow p-6">
             <p className="text-gray-500 text-sm mb-1">Total Requests</p>
             <h3 className="text-2xl font-bold">{monthlyStats.totalRequests}</h3>
+            <p className="text-xs text-gray-500 mt-1">In selected period</p>
           </div>
           <div className="bg-white rounded-lg shadow p-6">
             <p className="text-gray-500 text-sm mb-1">Approved Requests</p>
             <h3 className="text-2xl font-bold text-green-600">{monthlyStats.approvedRequests}</h3>
+            <p className="text-xs text-gray-500 mt-1">Successfully processed</p>
           </div>
           <div className="bg-white rounded-lg shadow p-6">
             <p className="text-gray-500 text-sm mb-1">Approval Rate</p>
             <h3 className="text-2xl font-bold text-blue-600">{monthlyStats.approvalRate}%</h3>
+            <p className="text-xs text-gray-500 mt-1">Success rate</p>
           </div>
         </section>
 
@@ -365,9 +396,15 @@ const AdminReports = ({ onNavigate }) => {
           <h3 className="font-semibold mb-4">Top Requested Items</h3>
           {topItems.length > 0 ? (
             <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={topItems}>
+              <BarChart data={topItems.slice(0, 10)}>
                 <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="name" angle={-45} textAnchor="end" height={100} />
+                <XAxis 
+                  dataKey="name" 
+                  angle={-45} 
+                  textAnchor="end" 
+                  height={100}
+                  interval={0}
+                />
                 <YAxis />
                 <Tooltip />
                 <Bar dataKey="count" fill="#6366F1" radius={[8, 8, 0, 0]} />
@@ -375,7 +412,7 @@ const AdminReports = ({ onNavigate }) => {
             </ResponsiveContainer>
           ) : (
             <div className="h-[300px] flex items-center justify-center text-gray-400">
-              No requested items data available
+              No requested items data available for the selected period
             </div>
           )}
         </section>
@@ -389,7 +426,7 @@ const AdminReports = ({ onNavigate }) => {
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
-                  {['Request ID', 'Store', 'Items', 'Requested By', 'Date', 'Status'].map((h) => (
+                  {['Request ID', 'Product', 'Quantity', 'Requested By', 'Date', 'Status'].map((h) => (
                     <th key={h} className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{h}</th>
                   ))}
                 </tr>
@@ -397,11 +434,9 @@ const AdminReports = ({ onNavigate }) => {
               <tbody className="bg-white divide-y divide-gray-200">
                 {recentActivity.length > 0 ? recentActivity.map((req) => (
                   <tr key={req.id}>
-                    <td className="px-6 py-4 text-sm font-medium">{req.code || req.id}</td>
-                    <td className="px-6 py-4 text-sm">{req.storeName || 'N/A'}</td>
-                    <td className="px-6 py-4 text-sm">
-                      {Array.isArray(req.items) ? `${req.items.length} items` : 'N/A'}
-                    </td>
+                    <td className="px-6 py-4 text-sm font-medium">{req.code}</td>
+                    <td className="px-6 py-4 text-sm">{req.productName || 'N/A'}</td>
+                    <td className="px-6 py-4 text-sm font-semibold">{req.quantityRequested}</td>
                     <td className="px-6 py-4 text-sm">{req.requestedBy || 'Unknown'}</td>
                     <td className="px-6 py-4 text-sm">
                       {req.createdAt ? new Date(req.createdAt).toLocaleDateString() : 'N/A'}

@@ -7,6 +7,7 @@ import requestService from '../services/requestService';
 import inventoryService from '../services/inventoryService';
 import userService from '../services/userService';
 import authService from '../services/authService';
+import dataMapper from '../utils/dataMapper';
 import { Package, ShoppingCart, Users, BarChart2 } from 'react-feather';
 
 const AdminDashboard = () => {
@@ -41,23 +42,32 @@ const AdminDashboard = () => {
         reportService.getDashboard(),
         requestService.getAll({ limit: 5 }),
         inventoryService.getLowStock(),
-        userService.getStaffList()
+        userService.getStaffList().catch(() => ({ data: [] }))
       ]);
 
+      // Map dashboard analytics
+      const analytics = dataMapper.mapDashboardAnalytics(dashboardRes.data);
+      
       setStats({
-        totalItems: dashboardRes.data?.totalItems || 0,
-        pendingRequests: dashboardRes.data?.pendingRequests || 0,
-        lowStockItems: dashboardRes.data?.lowStockItems || 0,
-        activeStaff: staffRes.data?.length || 0
+        totalItems: analytics.totalItems,
+        pendingRequests: analytics.pendingRequests,
+        lowStockItems: analytics.lowStockItems,
+        activeStaff: Array.isArray(staffRes.data) ? staffRes.data.length : 0
       });
 
-      setRecentRequests(requestsRes.data || []);
-      setLowStockItems(lowStockRes.data || []);
+      // Map requests
+      const mappedRequests = dataMapper.mapStockRequestList(requestsRes.data);
+      setRecentRequests(mappedRequests);
 
-      const statusCounts = requestsRes.data?.reduce((acc, req) => {
+      // Map low stock items
+      const mappedLowStock = dataMapper.mapLowStockList(lowStockRes.data);
+      setLowStockItems(mappedLowStock);
+
+      // Process request status for chart
+      const statusCounts = mappedRequests.reduce((acc, req) => {
         acc[req.status] = (acc[req.status] || 0) + 1;
         return acc;
-      }, {}) || {};
+      }, {});
 
       setRequestChartData([
         { label: 'Approved', value: statusCounts.Approved || 0 },
@@ -65,6 +75,7 @@ const AdminDashboard = () => {
         { label: 'Rejected', value: statusCounts.Rejected || 0 }
       ]);
 
+      // Get stock movement data
       try {
         const movementRes = await reportService.getMonthlyMovement();
         const stockData = (movementRes.data?.labels || []).map((label, i) => ({
@@ -79,7 +90,7 @@ const AdminDashboard = () => {
 
     } catch (err) {
       console.error('Dashboard load error:', err);
-      setError(err.message || 'Failed to load dashboard data');
+      setError(err.response?.data?.message || err.message || 'Failed to load dashboard data');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -103,7 +114,7 @@ const AdminDashboard = () => {
       alert('Request approved successfully!');
     } catch (err) {
       console.error('Approve error:', err);
-      alert(err.message || 'Failed to approve request');
+      alert(err.response?.data?.message || err.message || 'Failed to approve request');
     } finally {
       setActionLoading(false);
     }
@@ -125,7 +136,7 @@ const AdminDashboard = () => {
       alert('Request rejected');
     } catch (err) {
       console.error('Reject error:', err);
-      alert(err.message || 'Failed to reject request');
+      alert(err.response?.data?.message || err.message || 'Failed to reject request');
     } finally {
       setActionLoading(false);
     }
@@ -255,7 +266,7 @@ const AdminDashboard = () => {
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
-                  {['Request ID', 'Store', 'Items', 'Requested By', 'Date', 'Status', 'Actions'].map((h) => (
+                  {['Request ID', 'Product', 'Quantity', 'Requested By', 'Date', 'Status', 'Actions'].map((h) => (
                     <th key={h} className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{h}</th>
                   ))}
                 </tr>
@@ -263,11 +274,9 @@ const AdminDashboard = () => {
               <tbody className="bg-white divide-y divide-gray-200">
                 {recentRequests.length > 0 ? recentRequests.map((req) => (
                   <tr key={req.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 text-sm font-medium text-gray-900">{req.code || req.id}</td>
-                    <td className="px-6 py-4 text-sm text-gray-500">{req.storeName || 'N/A'}</td>
-                    <td className="px-6 py-4 text-sm text-gray-500">
-                      {Array.isArray(req.items) ? `${req.items.length} items` : '—'}
-                    </td>
+                    <td className="px-6 py-4 text-sm font-medium text-gray-900">{req.code}</td>
+                    <td className="px-6 py-4 text-sm text-gray-500">{req.productName || 'N/A'}</td>
+                    <td className="px-6 py-4 text-sm text-gray-500">{req.quantityRequested}</td>
                     <td className="px-6 py-4 text-sm text-gray-500">{req.requestedBy || 'Unknown'}</td>
                     <td className="px-6 py-4 text-sm text-gray-500">
                       {req.createdAt ? new Date(req.createdAt).toLocaleDateString() : 'N/A'}
@@ -328,7 +337,7 @@ const AdminDashboard = () => {
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
-                  {['Item ID', 'Product Name', 'Category', 'Current Stock', 'Threshold', 'Actions'].map((h) => (
+                  {['Item Code', 'Product Name', 'Category', 'Current Stock', 'Threshold', 'Shortage'].map((h) => (
                     <th key={h} className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{h}</th>
                   ))}
                 </tr>
@@ -336,16 +345,12 @@ const AdminDashboard = () => {
               <tbody className="bg-white divide-y divide-gray-200">
                 {lowStockItems.length > 0 ? lowStockItems.map((item) => (
                   <tr key={item.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 text-sm font-medium text-gray-900">{item.code || item.id}</td>
+                    <td className="px-6 py-4 text-sm font-medium text-gray-900">{item.code}</td>
                     <td className="px-6 py-4 text-sm text-gray-500">{item.name}</td>
                     <td className="px-6 py-4 text-sm text-gray-500">{item.category || 'N/A'}</td>
                     <td className="px-6 py-4 text-sm text-red-600 font-semibold">{item.stock}</td>
                     <td className="px-6 py-4 text-sm text-gray-500">{item.threshold}</td>
-                    <td className="px-6 py-4 text-sm">
-                      <button className="text-blue-600 hover:text-blue-900 font-medium">
-                        View Details
-                      </button>
-                    </td>
+                    <td className="px-6 py-4 text-sm text-red-600 font-semibold">{item.shortage || 0}</td>
                   </tr>
                 )) : (
                   <tr>
@@ -364,18 +369,14 @@ const AdminDashboard = () => {
             <div className="bg-white rounded-lg shadow-xl p-6 max-w-2xl w-full" onClick={(e) => e.stopPropagation()}>
               <h2 className="text-xl font-bold mb-4">Request Details</h2>
               <div className="space-y-3 mb-6">
-                <p><span className="font-semibold">Request ID:</span> {selectedRequest.code || selectedRequest.id}</p>
-                <p><span className="font-semibold">Store:</span> {selectedRequest.storeName}</p>
+                <p><span className="font-semibold">Request ID:</span> {selectedRequest.code}</p>
+                <p><span className="font-semibold">Product:</span> {selectedRequest.productName}</p>
+                <p><span className="font-semibold">Quantity:</span> {selectedRequest.quantityRequested}</p>
                 <p><span className="font-semibold">Status:</span> {selectedRequest.status}</p>
                 <p><span className="font-semibold">Requested By:</span> {selectedRequest.requestedBy}</p>
-                <div>
-                  <span className="font-semibold">Items:</span>
-                  <ul className="list-disc list-inside mt-2">
-                    {(selectedRequest.items || []).map((item, idx) => (
-                      <li key={idx}>{item.name} - Qty: {item.quantity}</li>
-                    ))}
-                  </ul>
-                </div>
+                {selectedRequest.reason && (
+                  <p><span className="font-semibold">Reason:</span> {selectedRequest.reason}</p>
+                )}
               </div>
               <div className="flex justify-end space-x-3">
                 <button 

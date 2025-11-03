@@ -1,16 +1,18 @@
 import React, { useEffect, useState } from 'react';
-import { RefreshCw, AlertCircle, X, Plus, Edit2, UserCheck, UserX } from 'react-feather';
+import { RefreshCw, AlertCircle, X, Plus } from 'react-feather';
 import AdminSidebar from '../components/AdminSidebar';
 import userService from '../services/userService';
 import authService from '../services/authService';
+import dataMapper from '../utils/dataMapper';
 
-const AdminStaffManagement = ({ onNavigate }) => {
+const AdminStaffManagement = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [staffList, setStaffList] = useState([]);
   
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState('All Roles');
+  const [statusFilter, setStatusFilter] = useState('All Status');
   
   const [showModal, setShowModal] = useState(false);
   const [modalMode, setModalMode] = useState('add');
@@ -19,8 +21,7 @@ const AdminStaffManagement = ({ onNavigate }) => {
     username: '',
     password: '',
     role: 'staff',
-    fullName: '',
-    phone: ''
+    fullName: ''
   });
   const [submitting, setSubmitting] = useState(false);
 
@@ -32,10 +33,13 @@ const AdminStaffManagement = ({ onNavigate }) => {
       setError(null);
       
       const res = await userService.getAll();
-      setStaffList(res.data || []);
+      
+      // Map backend data to frontend format
+      const mappedStaff = dataMapper.mapUserList(res.data);
+      setStaffList(mappedStaff);
     } catch (err) {
       console.error('Staff fetch error:', err);
-      setError(err.message || 'Failed to load staff');
+      setError(err.response?.data?.message || err.message || 'Failed to load staff');
     } finally {
       setLoading(false);
     }
@@ -47,9 +51,13 @@ const AdminStaffManagement = ({ onNavigate }) => {
 
   const filteredStaff = staffList.filter((staff) => {
     const matchesSearch = staff.username?.toLowerCase().includes(search.toLowerCase()) ||
-                         staff.fullName?.toLowerCase().includes(search.toLowerCase());
+                         staff.fullName?.toLowerCase().includes(search.toLowerCase()) ||
+                         staff.email?.toLowerCase().includes(search.toLowerCase());
     const matchesRole = roleFilter === 'All Roles' || staff.role === roleFilter;
-    return matchesSearch && matchesRole;
+    const matchesStatus = statusFilter === 'All Status' || 
+                         (statusFilter === 'active' && staff.status === 'active') ||
+                         (statusFilter === 'inactive' && staff.status === 'inactive');
+    return matchesSearch && matchesRole && matchesStatus;
   });
 
   const handleOpenModal = (mode, staff = null) => {
@@ -61,16 +69,14 @@ const AdminStaffManagement = ({ onNavigate }) => {
         username: staff.username || '',
         password: '',
         role: staff.role || 'staff',
-        fullName: staff.fullName || '',
-        phone: staff.phone || ''
+        fullName: staff.fullName || ''
       });
     } else {
       setFormData({
         username: '',
         password: '',
         role: 'staff',
-        fullName: '',
-        phone: ''
+        fullName: ''
       });
     }
     
@@ -80,31 +86,59 @@ const AdminStaffManagement = ({ onNavigate }) => {
   const handleCloseModal = () => {
     setShowModal(false);
     setCurrentStaff(null);
+    setFormData({
+      username: '',
+      password: '',
+      role: 'staff',
+      fullName: ''
+    });
+  };
+
+  const handleInputChange = (e) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({
+      ...prev,
+      [name]: value
+    }));
   };
 
   const handleSubmit = async () => {
-    if (!formData.username || (modalMode === 'add' && !formData.password)) {
-      alert('Please fill in all required fields');
+    // Validation
+    if (!formData.username.trim()) {
+      alert('Username is required');
+      return;
+    }
+
+    if (modalMode === 'add' && !formData.password.trim()) {
+      alert('Password is required for new staff members');
+      return;
+    }
+
+    if (!formData.fullName.trim()) {
+      alert('Full name is required');
       return;
     }
 
     setSubmitting(true);
     try {
       if (modalMode === 'add') {
-        await userService.create(formData);
+        await userService.create({
+          username: formData.username.trim(),
+          password: formData.password,
+          role: formData.role,
+          fullName: formData.fullName.trim()
+        });
         alert('Staff member added successfully!');
+        handleCloseModal();
+        fetchStaff();
       } else {
-        const updateData = { ...formData };
-        if (!updateData.password) delete updateData.password;
-        await userService.update(currentStaff.id, updateData);
-        alert('Staff member updated successfully!');
+        // Note: Backend doesn't have user update endpoint yet
+        alert('User profile editing is not yet implemented in the backend. You can update the user status using the Activate/Deactivate buttons.');
+        handleCloseModal();
       }
-      
-      handleCloseModal();
-      fetchStaff();
     } catch (err) {
       console.error('Submit error:', err);
-      alert(err.message || 'Operation failed');
+      alert(err.response?.data?.message || err.message || 'Operation failed');
     } finally {
       setSubmitting(false);
     }
@@ -122,9 +156,22 @@ const AdminStaffManagement = ({ onNavigate }) => {
       fetchStaff();
     } catch (err) {
       console.error('Status toggle error:', err);
-      alert(err.message || 'Failed to update status');
+      alert(err.response?.data?.message || err.message || 'Failed to update status');
     }
   };
+
+  const getStaffStats = () => {
+    const total = staffList.length;
+    const active = staffList.filter(s => s.status === 'active').length;
+    const inactive = staffList.filter(s => s.status === 'inactive').length;
+    const admins = staffList.filter(s => s.role === 'admin').length;
+    const staff = staffList.filter(s => s.role === 'staff').length;
+    const managers = staffList.filter(s => s.role === 'manager').length;
+
+    return { total, active, inactive, admins, staff, managers };
+  };
+
+  const stats = getStaffStats();
 
   if (loading) {
     return (
@@ -140,12 +187,12 @@ const AdminStaffManagement = ({ onNavigate }) => {
   return (
     <div className="min-h-screen flex bg-gray-100 font-sans">
       <AdminSidebar/>
-      {/* Main Content */}
+      
       <main className="ml-64 flex-1 p-8">
         <div className="flex justify-between items-center mb-8">
           <div>
             <h1 className="text-2xl font-bold text-gray-800">Staff Management</h1>
-            <p className="text-gray-600">Manage all staff members</p>
+            <p className="text-gray-600">Manage all staff members and their roles</p>
           </div>
           <div className="flex items-center space-x-4">
             <button 
@@ -158,6 +205,7 @@ const AdminStaffManagement = ({ onNavigate }) => {
             <button 
               onClick={fetchStaff}
               className="p-2 rounded-lg hover:bg-gray-200 transition"
+              title="Refresh"
             >
               <RefreshCw size={20} />
             </button>
@@ -170,19 +218,53 @@ const AdminStaffManagement = ({ onNavigate }) => {
             <div>
               <h3 className="font-semibold text-red-800">Error</h3>
               <p className="text-red-700 text-sm">{error}</p>
+              <button 
+                onClick={fetchStaff}
+                className="text-red-600 text-sm underline mt-2 hover:text-red-800"
+              >
+                Try again
+              </button>
             </div>
           </div>
         )}
 
+        {/* Stats Cards */}
+        <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4 mb-8">
+          <div className="bg-white rounded-lg shadow p-4">
+            <p className="text-gray-500 text-xs mb-1">Total Staff</p>
+            <h3 className="text-2xl font-bold text-gray-900">{stats.total}</h3>
+          </div>
+          <div className="bg-white rounded-lg shadow p-4">
+            <p className="text-gray-500 text-xs mb-1">Active</p>
+            <h3 className="text-2xl font-bold text-green-600">{stats.active}</h3>
+          </div>
+          <div className="bg-white rounded-lg shadow p-4">
+            <p className="text-gray-500 text-xs mb-1">Inactive</p>
+            <h3 className="text-2xl font-bold text-red-600">{stats.inactive}</h3>
+          </div>
+          <div className="bg-white rounded-lg shadow p-4">
+            <p className="text-gray-500 text-xs mb-1">Admins</p>
+            <h3 className="text-2xl font-bold text-blue-600">{stats.admins}</h3>
+          </div>
+          <div className="bg-white rounded-lg shadow p-4">
+            <p className="text-gray-500 text-xs mb-1">Staff</p>
+            <h3 className="text-2xl font-bold text-purple-600">{stats.staff}</h3>
+          </div>
+          <div className="bg-white rounded-lg shadow p-4">
+            <p className="text-gray-500 text-xs mb-1">Managers</p>
+            <h3 className="text-2xl font-bold text-indigo-600">{stats.managers}</h3>
+          </div>
+        </section>
+
         {/* Filters */}
         <div className="bg-white rounded-lg shadow p-6 mb-8">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Search</label>
               <input 
                 type="text" 
-                placeholder="Search staff..." 
-                className="w-full border rounded-lg px-3 py-2" 
+                placeholder="Search by username, name, or email..." 
+                className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" 
                 value={search} 
                 onChange={(e) => setSearch(e.target.value)} 
               />
@@ -190,14 +272,26 @@ const AdminStaffManagement = ({ onNavigate }) => {
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
               <select 
-                className="w-full border rounded-lg px-3 py-2" 
+                className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" 
                 value={roleFilter} 
                 onChange={(e) => setRoleFilter(e.target.value)}
               >
                 <option>All Roles</option>
-                <option>admin</option>
-                <option>staff</option>
-                <option>manager</option>
+                <option value="admin">Admin</option>
+                <option value="staff">Staff</option>
+                <option value="manager">Manager</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+              <select 
+                className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" 
+                value={statusFilter} 
+                onChange={(e) => setStatusFilter(e.target.value)}
+              >
+                <option>All Status</option>
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
               </select>
             </div>
           </div>
@@ -206,28 +300,32 @@ const AdminStaffManagement = ({ onNavigate }) => {
         {/* Staff Table */}
         <div className="bg-white rounded-lg shadow overflow-hidden">
           <div className="p-6 border-b">
-            <h3 className="font-semibold">All Staff Members ({filteredStaff.length})</h3>
+            <h3 className="font-semibold">Staff Members ({filteredStaff.length})</h3>
           </div>
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
-                  {['Username', 'Full Name', 'Role', 'Phone', 'Status', 'Actions'].map((h) => (
-                    <th key={h} className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{h}</th>
+                  {['Username', 'Full Name', 'Email', 'Role', 'Status', 'Created', 'Actions'].map((h) => (
+                    <th key={h} className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {filteredStaff.length > 0 ? filteredStaff.map((staff) => (
-                  <tr key={staff.id}>
-                    <td className="px-6 py-4 text-sm font-medium">{staff.username}</td>
-                    <td className="px-6 py-4 text-sm">{staff.fullName || 'N/A'}</td>
+                  <tr key={staff.id} className="hover:bg-gray-50">
+                    <td className="px-6 py-4 text-sm font-medium text-gray-900">{staff.username}</td>
+                    <td className="px-6 py-4 text-sm text-gray-500">{staff.fullName || 'N/A'}</td>
+                    <td className="px-6 py-4 text-sm text-gray-500">{staff.email || 'N/A'}</td>
                     <td className="px-6 py-4 text-sm">
-                      <span className="px-2 py-1 bg-blue-100 text-blue-800 text-xs font-semibold rounded-full capitalize">
+                      <span className={`px-2 py-1 text-xs font-semibold rounded-full capitalize ${
+                        staff.role === 'admin' ? 'bg-blue-100 text-blue-800' :
+                        staff.role === 'manager' ? 'bg-indigo-100 text-indigo-800' :
+                        'bg-purple-100 text-purple-800'
+                      }`}>
                         {staff.role}
                       </span>
                     </td>
-                    <td className="px-6 py-4 text-sm">{staff.phone || 'N/A'}</td>
                     <td className="px-6 py-4">
                       <span className={`px-2 py-1 text-xs font-semibold rounded-full capitalize ${
                         staff.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
@@ -235,16 +333,17 @@ const AdminStaffManagement = ({ onNavigate }) => {
                         {staff.status || 'active'}
                       </span>
                     </td>
+                    <td className="px-6 py-4 text-sm text-gray-500">
+                      {staff.createdAt ? new Date(staff.createdAt).toLocaleDateString() : 'N/A'}
+                    </td>
                     <td className="px-6 py-4 text-sm space-x-2">
                       <button 
-                        onClick={() => handleOpenModal('edit', staff)}
-                        className="text-blue-600 hover:text-blue-900"
-                      >
-                        Edit
-                      </button>
-                      <button 
                         onClick={() => handleStatusToggle(staff)}
-                        className={staff.status === 'active' ? 'text-red-600 hover:text-red-900' : 'text-green-600 hover:text-green-900'}
+                        className={`font-medium ${
+                          staff.status === 'active' 
+                            ? 'text-red-600 hover:text-red-900' 
+                            : 'text-green-600 hover:text-green-900'
+                        }`}
                       >
                         {staff.status === 'active' ? 'Deactivate' : 'Activate'}
                       </button>
@@ -252,7 +351,7 @@ const AdminStaffManagement = ({ onNavigate }) => {
                   </tr>
                 )) : (
                   <tr>
-                    <td colSpan="7" className="px-6 py-4 text-center text-gray-500">
+                    <td colSpan="7" className="px-6 py-8 text-center text-gray-500">
                       No staff members found
                     </td>
                   </tr>
@@ -264,93 +363,101 @@ const AdminStaffManagement = ({ onNavigate }) => {
 
         {/* Add/Edit Modal */}
         {showModal && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={handleCloseModal}>
-            <div className="bg-white rounded-lg shadow-xl p-6 max-w-2xl w-full mx-4 max-h-screen overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="text-xl font-bold">
-                  {modalMode === 'add' ? 'Add New Staff' : 'Edit Staff Member'}
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={handleCloseModal}>
+            <div className="bg-white rounded-lg shadow-xl p-6 max-w-md w-full" onClick={(e) => e.stopPropagation()}>
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-xl font-bold text-gray-900">
+                  {modalMode === 'add' ? 'Add New Staff Member' : 'Edit Staff Member'}
                 </h2>
-                <button onClick={handleCloseModal}>
+                <button 
+                  onClick={handleCloseModal}
+                  className="text-gray-400 hover:text-gray-600 transition"
+                >
                   <X size={24} />
                 </button>
               </div>
               
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium mb-1">Username*</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Username<span className="text-red-500">*</span>
+                  </label>
                   <input
                     type="text"
-                    className="w-full border rounded-lg px-3 py-2"
+                    name="username"
+                    className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                     value={formData.username}
-                    onChange={(e) => setFormData({...formData, username: e.target.value})}
+                    onChange={handleInputChange}
                     disabled={modalMode === 'edit'}
+                    placeholder="Enter username"
                   />
                 </div>
                 
                 <div>
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium mb-1">
-                    Password{modalMode === 'add' ? '*' : ' (leave blank to keep current)'}
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Password{modalMode === 'add' && <span className="text-red-500">*</span>}
+                    {modalMode === 'edit' && <span className="text-gray-500 text-xs ml-1">(leave blank to keep current)</span>}
                   </label>
                   <input
                     type="password"
-                    className="w-full border rounded-lg px-3 py-2"
+                    name="password"
+                    className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                     value={formData.password}
-                    onChange={(e) => setFormData({...formData, password: e.target.value})}
-                    placeholder={modalMode === 'edit' ? 'Leave blank to keep current' : ''}
+                    onChange={handleInputChange}
+                    placeholder={modalMode === 'edit' ? 'Leave blank to keep current' : 'Enter password'}
                   />
                 </div>
                 
                 <div>
-                  <label className="block text-sm font-medium mb-1">Role*</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Full Name<span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    name="fullName"
+                    className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    value={formData.fullName}
+                    onChange={handleInputChange}
+                    placeholder="Enter full name"
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Role<span className="text-red-500">*</span>
+                  </label>
                   <select
-                    className="w-full border rounded-lg px-3 py-2"
+                    name="role"
+                    className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                     value={formData.role}
-                    onChange={(e) => setFormData({...formData, role: e.target.value})}
+                    onChange={handleInputChange}
                   >
                     <option value="staff">Staff</option>
                     <option value="manager">Manager</option>
                     <option value="admin">Admin</option>
                   </select>
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium mb-1">Full Name</label>
-                  <input
-                    type="text"
-                    className="w-full border rounded-lg px-3 py-2"
-                    value={formData.fullName}
-                    onChange={(e) => setFormData({...formData, fullName: e.target.value})}
-                  />
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium mb-1">Phone</label>
-                  <input
-                    type="tel"
-                    className="w-full border rounded-lg px-3 py-2"
-                    value={formData.phone}
-                    onChange={(e) => setFormData({...formData, phone: e.target.value})}
-                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    {formData.role === 'admin' && 'Full system access'}
+                    {formData.role === 'manager' && 'Can manage inventory and requests'}
+                    {formData.role === 'staff' && 'Can view and create requests'}
+                  </p>
                 </div>
               </div>
               
-              <div className="flex justify-end space-x-3 mt-6">
+              <div className="flex justify-end space-x-3 mt-6 pt-6 border-t">
                 <button 
                   onClick={handleCloseModal}
-                  className="px-4 py-2 border rounded-lg hover:bg-gray-100"
+                  className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition"
                   disabled={submitting}
                 >
                   Cancel
                 </button>
                 <button 
                   onClick={handleSubmit}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
                   disabled={submitting}
                 >
-                  {submitting ? 'Saving...' : modalMode === 'add' ? 'Add Staff' : 'Update Staff'}
+                  {submitting ? 'Saving...' : modalMode === 'add' ? 'Add Staff Member' : 'Update Staff Member'}
                 </button>
               </div>
             </div>

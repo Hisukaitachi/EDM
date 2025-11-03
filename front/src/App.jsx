@@ -11,6 +11,9 @@ import AdminStockRequests from './pages/AdminStockRequests';
 import AdminStaffManagement from './pages/AdminStaffManagement';
 import AdminReports from './pages/AdminReports';
 
+import StaffDashboard from './pages/StaffDashboard';
+import StaffRequestStock from './pages/StaffRequestStock';
+
 import './styles/global.css';
 
 function App() {
@@ -30,8 +33,8 @@ function App() {
           <Route path="/admin/reports" element={<AdminReports />} />
 
           {/* Staff Placeholder */}
-          <Route path="/staff/dashboard" element={<div>Staff Dashboard Coming Soon...</div>} />
-
+          <Route path="/staff/dashboard" element={<StaffDashboard/>} />
+          <Route path="/staff/request-stock" element={<StaffRequestStock/>} />
           {/* Catch all */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

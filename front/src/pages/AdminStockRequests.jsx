@@ -3,8 +3,9 @@ import { RefreshCw, AlertCircle, X, Eye, Check, XCircle } from 'react-feather';
 import requestService from '../services/requestService';
 import authService from '../services/authService';
 import AdminSidebar from '../components/AdminSidebar';
+import dataMapper from '../utils/dataMapper';
 
-const AdminStockRequests = ({ onNavigate }) => {
+const AdminStockRequests = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [requests, setRequests] = useState([]);
@@ -32,11 +33,13 @@ const AdminStockRequests = ({ onNavigate }) => {
         requestService.getPendingCount()
       ]);
       
-      setRequests(requestsRes.data || []);
-      setPendingCount(pendingRes.data?.count || 0);
+      // Map backend data to frontend format
+      const mappedRequests = dataMapper.mapStockRequestList(requestsRes.data);
+      setRequests(mappedRequests);
+      setPendingCount(pendingRes.data?.count || pendingRes.data?.pendingCount || 0);
     } catch (err) {
       console.error('Requests fetch error:', err);
-      setError(err.message || 'Failed to load requests');
+      setError(err.response?.data?.message || err.message || 'Failed to load requests');
     } finally {
       setLoading(false);
     }
@@ -49,7 +52,8 @@ const AdminStockRequests = ({ onNavigate }) => {
   const filteredRequests = requests.filter((req) => {
     const matchesSearch = req.code?.toLowerCase().includes(search.toLowerCase()) ||
                          req.storeName?.toLowerCase().includes(search.toLowerCase()) ||
-                         req.requestedBy?.toLowerCase().includes(search.toLowerCase());
+                         req.requestedBy?.toLowerCase().includes(search.toLowerCase()) ||
+                         req.productName?.toLowerCase().includes(search.toLowerCase());
     const matchesStatus = statusFilter === 'All Status' || req.status === statusFilter;
     return matchesSearch && matchesStatus;
   });
@@ -86,7 +90,7 @@ const AdminStockRequests = ({ onNavigate }) => {
       fetchRequests();
     } catch (err) {
       console.error('Approve error:', err);
-      alert(err.message || 'Failed to approve request');
+      alert(err.response?.data?.message || err.message || 'Failed to approve request');
     } finally {
       setActionLoading(false);
     }
@@ -113,7 +117,7 @@ const AdminStockRequests = ({ onNavigate }) => {
       fetchRequests();
     } catch (err) {
       console.error('Reject error:', err);
-      alert(err.message || 'Failed to reject request');
+      alert(err.response?.data?.message || err.message || 'Failed to reject request');
     } finally {
       setActionLoading(false);
     }
@@ -133,7 +137,7 @@ const AdminStockRequests = ({ onNavigate }) => {
   return (
     <div className="min-h-screen flex bg-gray-100 font-sans">
       <AdminSidebar/>
-      {/* Main Content */}
+      
       <main className="ml-64 flex-1 p-8">
         <div className="flex justify-between items-center mb-8">
           <div>
@@ -203,7 +207,7 @@ const AdminStockRequests = ({ onNavigate }) => {
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
-                  {['Request ID', 'Store', 'Items', 'Requested By', 'Date', 'Status', 'Actions'].map((h) => (
+                  {['Request ID', 'Product', 'Quantity', 'Requested By', 'Date', 'Status', 'Actions'].map((h) => (
                     <th key={h} className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{h}</th>
                   ))}
                 </tr>
@@ -211,11 +215,9 @@ const AdminStockRequests = ({ onNavigate }) => {
               <tbody className="bg-white divide-y divide-gray-200">
                 {filteredRequests.length > 0 ? filteredRequests.map((req) => (
                   <tr key={req.id}>
-                    <td className="px-6 py-4 text-sm font-medium">{req.code || req.id}</td>
-                    <td className="px-6 py-4 text-sm">{req.storeName || 'N/A'}</td>
-                    <td className="px-6 py-4 text-sm">
-                      {Array.isArray(req.items) ? `${req.items.length} items` : 'N/A'}
-                    </td>
+                    <td className="px-6 py-4 text-sm font-medium">{req.code}</td>
+                    <td className="px-6 py-4 text-sm">{req.productName || 'N/A'}</td>
+                    <td className="px-6 py-4 text-sm font-semibold">{req.quantityRequested}</td>
                     <td className="px-6 py-4 text-sm">{req.requestedBy || 'Unknown'}</td>
                     <td className="px-6 py-4 text-sm">
                       {req.createdAt ? new Date(req.createdAt).toLocaleDateString() : 'N/A'}
@@ -283,11 +285,19 @@ const AdminStockRequests = ({ onNavigate }) => {
               <div className="grid grid-cols-2 gap-4 mb-6">
                 <div>
                   <p className="text-sm text-gray-500">Request ID</p>
-                  <p className="font-semibold">{selectedRequest.code || selectedRequest.id}</p>
+                  <p className="font-semibold">{selectedRequest.code}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-gray-500">Store</p>
-                  <p className="font-semibold">{selectedRequest.storeName}</p>
+                  <p className="text-sm text-gray-500">Product</p>
+                  <p className="font-semibold">{selectedRequest.productName}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500">Product Code</p>
+                  <p className="font-semibold">{selectedRequest.productCode}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500">Quantity Requested</p>
+                  <p className="font-semibold">{selectedRequest.quantityRequested}</p>
                 </div>
                 <div>
                   <p className="text-sm text-gray-500">Requested By</p>
@@ -309,36 +319,25 @@ const AdminStockRequests = ({ onNavigate }) => {
                     {selectedRequest.status}
                   </span>
                 </div>
+                {selectedRequest.approvedBy && (
+                  <div>
+                    <p className="text-sm text-gray-500">Approved By</p>
+                    <p className="font-semibold">{selectedRequest.approvedBy}</p>
+                  </div>
+                )}
               </div>
 
-              <div className="mb-6">
-                <h3 className="font-semibold mb-3">Requested Items</h3>
-                <div className="border rounded-lg overflow-hidden">
-                  <table className="min-w-full">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Item</th>
-                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Quantity</th>
-                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Unit</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-200">
-                      {(selectedRequest.items || []).map((item, idx) => (
-                        <tr key={idx}>
-                          <td className="px-4 py-2 text-sm">{item.name || 'N/A'}</td>
-                          <td className="px-4 py-2 text-sm font-semibold">{item.quantity}</td>
-                          <td className="px-4 py-2 text-sm">{item.unit || 'pcs'}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-              {selectedRequest.notes && (
+              {selectedRequest.reason && (
                 <div className="mb-6">
-                  <h3 className="font-semibold mb-2">Notes</h3>
-                  <p className="text-sm text-gray-600 bg-gray-50 p-3 rounded">{selectedRequest.notes}</p>
+                  <h3 className="font-semibold mb-2">Request Reason</h3>
+                  <p className="text-sm text-gray-600 bg-gray-50 p-3 rounded">{selectedRequest.reason}</p>
+                </div>
+              )}
+
+              {selectedRequest.approvalNotes && (
+                <div className="mb-6">
+                  <h3 className="font-semibold mb-2">Approval Notes</h3>
+                  <p className="text-sm text-gray-600 bg-gray-50 p-3 rounded">{selectedRequest.approvalNotes}</p>
                 </div>
               )}
 
@@ -388,7 +387,7 @@ const AdminStockRequests = ({ onNavigate }) => {
               </div>
               
               <p className="text-gray-600 mb-6">
-                Are you sure you want to approve request <strong>{selectedRequest.code || selectedRequest.id}</strong> from <strong>{selectedRequest.storeName}</strong>?
+                Are you sure you want to approve request <strong>{selectedRequest.code}</strong> for <strong>{selectedRequest.productName}</strong>?
               </p>
 
               <div className="flex justify-end space-x-3">
@@ -423,7 +422,7 @@ const AdminStockRequests = ({ onNavigate }) => {
               </div>
               
               <p className="text-gray-600 mb-4">
-                Rejecting request <strong>{selectedRequest.code || selectedRequest.id}</strong> from <strong>{selectedRequest.storeName}</strong>.
+                Rejecting request <strong>{selectedRequest.code}</strong> for <strong>{selectedRequest.productName}</strong>.
               </p>
 
               <div className="mb-6">

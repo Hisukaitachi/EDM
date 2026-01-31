@@ -1,3 +1,4 @@
+// backend/src/services/reportService.js
 const reportModel = require('../models/reportModel');
 
 const reportService = {
@@ -16,7 +17,7 @@ const reportService = {
     return await reportModel.getMostRequestedItems(startDate, endDate, limit);
   },
 
-  // Inventory Valuation by Category
+  // Inventory Valuation by Product (now by Product Type)
   getInventoryValuationReport: async () => {
     return await reportModel.getInventoryValuation();
   },

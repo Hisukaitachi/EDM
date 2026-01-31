@@ -1,3 +1,4 @@
+// backend/src/models/requestModel.js
 const db = require('../config/database');
 
 const requestModel = {
@@ -7,7 +8,6 @@ const requestModel = {
       SELECT 
         sr.*,
         i.product_name,
-        i.product_code,
         u_req.full_name AS requested_by_name,
         u_app.full_name AS approved_by_name
       FROM StockRequests sr
@@ -16,6 +16,7 @@ const requestModel = {
       LEFT JOIN Users u_app ON sr.approved_by = u_app.user_id
       WHERE 1=1
     `;
+    // REMOVED: i.product_code from SELECT (no longer exists)
     const params = [];
 
     if (status) {
@@ -40,7 +41,6 @@ const requestModel = {
       `SELECT 
         sr.*,
         i.product_name,
-        i.product_code,
         i.unit_price,
         u_req.full_name AS requested_by_name,
         u_app.full_name AS approved_by_name
@@ -51,6 +51,7 @@ const requestModel = {
       WHERE sr.request_id = ?`,
       [requestId]
     );
+    // REMOVED: i.product_code from SELECT (no longer exists)
     return rows[0];
   },
 
@@ -86,14 +87,14 @@ const requestModel = {
     const [rows] = await db.query(
       `SELECT 
         sr.*,
-        i.product_name,
-        i.product_code
+        i.product_name
       FROM StockRequests sr
       INNER JOIN Inventory i ON sr.inventory_id = i.inventory_id
       WHERE sr.requested_by = ?
       ORDER BY sr.created_at DESC`,
       [userId]
     );
+    // REMOVED: i.product_code from SELECT (no longer exists)
     return rows;
   }
 };

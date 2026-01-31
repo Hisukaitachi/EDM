@@ -1,3 +1,4 @@
+// backend/src/models/reportModel.js
 const db = require('../config/database');
 
 const reportModel = {

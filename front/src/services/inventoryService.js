@@ -6,7 +6,7 @@ const inventoryService = {
   getAll: async (filters = {}) => {
     const params = new URLSearchParams();
     if (filters.status) params.append('status', filters.status);
-    if (filters.categoryId) params.append('categoryId', filters.categoryId);
+    if (filters.productTypeId) params.append('productTypeId', filters.productTypeId); // CHANGED from categoryId
     
     const response = await api.get(`/inventory?${params}`);
     return response.data;
@@ -23,15 +23,16 @@ const inventoryService = {
     // Map frontend field names to backend field names
     const backendData = {
       productName: productData.name,
-      productCode: productData.code,
-      categoryId: productData.categoryId || productData.category,
+      // productCode: productData.code, // REMOVED - field no longer exists
+      productTypeId: productData.productTypeId || productData.category, // CHANGED from categoryId
       description: productData.description,
       unitPrice: parseFloat(productData.price),
       quantity: parseInt(productData.stock),
-      reorderLevel: parseInt(productData.threshold),
+      size: productData.size, // CHANGED - now kept as string instead of parseInt
       unitOfMeasure: productData.unit || 'pcs'
     };
     
+    console.log('Sending to backend:', backendData);
     const response = await api.post('/inventory', backendData);
     return response.data;
   },
@@ -41,10 +42,10 @@ const inventoryService = {
     // Map frontend field names to backend field names
     const backendData = {
       productName: productData.name,
-      categoryId: productData.categoryId || productData.category,
+      productTypeId: productData.productTypeId || productData.category, // CHANGED from categoryId
       description: productData.description,
       unitPrice: parseFloat(productData.price),
-      reorderLevel: parseInt(productData.threshold),
+      size: productData.size, // CHANGED - now kept as string instead of parseInt
       unitOfMeasure: productData.unit || 'pcs'
     };
     
@@ -79,36 +80,56 @@ const inventoryService = {
     return response.data;
   },
 
-  // Get all categories
+  // Get all product types (renamed from getCategories)
+  getProductTypes: async () => {
+    const response = await api.get('/product'); // Endpoint stays same
+    return response.data;
+  },
+
+  // Keep old method name for backward compatibility (optional - can be removed)
   getCategories: async () => {
-    const response = await api.get('/categories');
+    return inventoryService.getProductTypes();
+  },
+
+  // Create product type (Admin only) - renamed from createCategory
+  createProductType: async (productTypeData) => {
+    const backendData = {
+      productTypeName: productTypeData.name || productTypeData.productTypeName, // CHANGED from categoryName
+      description: productTypeData.description
+    };
+    const response = await api.post('/product', backendData); // Endpoint stays same
     return response.data;
   },
 
-  // Create category (Admin only)
+  // Keep old method name for backward compatibility (optional - can be removed)
   createCategory: async (categoryData) => {
+    return inventoryService.createProductType(categoryData);
+  },
+
+  // Update product type (Admin only) - renamed from updateCategory
+  updateProductType: async (id, productTypeData) => {
     const backendData = {
-      categoryName: categoryData.name || categoryData.categoryName,
-      description: categoryData.description
+      productTypeName: productTypeData.name || productTypeData.productTypeName, // CHANGED from categoryName
+      description: productTypeData.description
     };
-    const response = await api.post('/categories', backendData);
+    const response = await api.put(`/product/${id}`, backendData); // Endpoint stays same
     return response.data;
   },
 
-  // Update category (Admin only)
+  // Keep old method name for backward compatibility (optional - can be removed)
   updateCategory: async (id, categoryData) => {
-    const backendData = {
-      categoryName: categoryData.name || categoryData.categoryName,
-      description: categoryData.description
-    };
-    const response = await api.put(`/categories/${id}`, backendData);
+    return inventoryService.updateProductType(id, categoryData);
+  },
+
+  // Delete product type (Admin only) - renamed from deleteCategory
+  deleteProductType: async (id) => {
+    const response = await api.delete(`/product/${id}`); // Endpoint stays same
     return response.data;
   },
 
-  // Delete category (Admin only)
+  // Keep old method name for backward compatibility (optional - can be removed)
   deleteCategory: async (id) => {
-    const response = await api.delete(`/categories/${id}`);
-    return response.data;
+    return inventoryService.deleteProductType(id);
   }
 };
 

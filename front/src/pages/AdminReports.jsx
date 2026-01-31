@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { RefreshCw, AlertCircle, Download, TrendingUp, TrendingDown, Calendar } from 'react-feather';
+import { RefreshCw, AlertCircle, Download, TrendingUp, TrendingDown, Calendar, Package, Users, Clock } from 'react-feather';
 import AdminSidebar from '../components/AdminSidebar';
 import reportService from '../services/reportService';
 import requestService from '../services/requestService';
@@ -34,6 +34,8 @@ const AdminReports = () => {
     approvedRequests: 0,
     approvalRate: 0
   });
+  const [productTypeDistribution, setProductTypeDistribution] = useState([]);
+  const [dailyRequestTrend, setDailyRequestTrend] = useState([]);
 
   const [dateRange, setDateRange] = useState('last30days');
 
@@ -61,57 +63,84 @@ const AdminReports = () => {
       // Fetch all data in parallel
       const [
         dashboardRes,
-        movementRes,
+        inventoryRes,
         requestsRes,
-        valuationRes,
         staffRes
       ] = await Promise.all([
-        reportService.getDashboard(),
-        reportService.getMonthlyMovement(),
+        reportService.getDashboard().catch(() => ({ data: {} })),
+        inventoryService.getAll().catch(() => ({ data: [] })),
         requestService.getAll({
           startDate: startDate.toISOString().split('T')[0],
           endDate: endDate.toISOString().split('T')[0]
-        }),
-        reportService.getInventoryValuation().catch(() => ({ data: { totalValue: 0 } })),
+        }).catch(() => ({ data: [] })),
         userService.getStaffList().catch(() => ({ data: [] }))
       ]);
 
       // Map dashboard analytics
       const analytics = dataMapper.mapDashboardAnalytics(dashboardRes.data);
+      const mappedInventory = dataMapper.mapInventoryList(inventoryRes.data);
+      const mappedRequests = dataMapper.mapStockRequestList(requestsRes.data);
       
       // Set KPIs
       setKpis({
-        totalItems: analytics.totalItems,
-        pendingRequests: analytics.pendingRequests,
-        lowStockItems: analytics.lowStockItems,
+        totalItems: mappedInventory.length,
+        pendingRequests: mappedRequests.filter(r => r.status === 'Pending').length,
+        lowStockItems: mappedInventory.filter(item => item.stock <= item.size && item.stock > 0).length,
         activeStaff: Array.isArray(staffRes.data) ? staffRes.data.length : 0
       });
 
-      // Process stock trend data
-      if (movementRes.data) {
-        const trendData = (movementRes.data.labels || []).map((label, i) => ({
-          label,
-          value: movementRes.data.values?.[i] || movementRes.data.datasets?.[0]?.data?.[i] || 0
-        }));
-        setStockTrend(trendData);
+      // Calculate inventory valuation
+      const totalValue = mappedInventory.reduce((sum, item) => {
+        return sum + (item.stock * (item.price || 0));
+      }, 0);
+      setInventoryValuation(totalValue);
+
+      // Process product type distribution
+      const typeMap = new Map();
+      mappedInventory.forEach(item => {
+        const type = item.productType || 'Uncategorized';
+        if (typeMap.has(type)) {
+          typeMap.set(type, typeMap.get(type) + 1);
+        } else {
+          typeMap.set(type, 1);
+        }
+      });
+      
+      const typeDistribution = Array.from(typeMap.entries()).map(([name, value]) => ({
+        name,
+        value
+      }));
+      setProductTypeDistribution(typeDistribution);
+
+      // Process stock trend data (last 7 days of stock levels)
+      const last7Days = [];
+      for (let i = 6; i >= 0; i--) {
+        const date = new Date();
+        date.setDate(date.getDate() - i);
+        last7Days.push({
+          label: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+          value: mappedInventory.reduce((sum, item) => sum + item.stock, 0),
+          items: mappedInventory.length
+        });
       }
+      setStockTrend(last7Days);
 
-      // Map and process request data
-      const mappedRequests = dataMapper.mapStockRequestList(requestsRes.data);
+      // Process request status distribution
       const statusCounts = mappedRequests.reduce((acc, req) => {
-        acc[req.status] = (acc[req.status] || 0) + 1;
+        const status = req.status || 'Unknown';
+        acc[status] = (acc[status] || 0) + 1;
         return acc;
-      }, { Approved: 0, Pending: 0, Rejected: 0 });
+      }, {});
 
-      setRequestStatus([
-        { label: 'Approved', value: statusCounts.Approved },
-        { label: 'Pending', value: statusCounts.Pending },
-        { label: 'Rejected', value: statusCounts.Rejected }
-      ]);
+      const statusData = Object.entries(statusCounts).map(([label, value]) => ({
+        label,
+        value
+      }));
+      setRequestStatus(statusData);
 
       // Calculate monthly stats
       const totalRequests = mappedRequests.length;
-      const approvedRequests = statusCounts.Approved;
+      const approvedRequests = statusCounts.Approved || statusCounts.Completed || 0;
       const approvalRate = totalRequests > 0 ? ((approvedRequests / totalRequests) * 100).toFixed(1) : 0;
 
       setMonthlyStats({
@@ -120,32 +149,44 @@ const AdminReports = () => {
         approvalRate
       });
 
+      // Process daily request trend
+      const dailyMap = new Map();
+      mappedRequests.forEach(req => {
+        const date = new Date(req.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        dailyMap.set(date, (dailyMap.get(date) || 0) + 1);
+      });
+      
+      const dailyTrend = Array.from(dailyMap.entries())
+        .map(([date, count]) => ({ date, count }))
+        .sort((a, b) => new Date(a.date) - new Date(b.date))
+        .slice(-14); // Last 14 days
+      setDailyRequestTrend(dailyTrend);
+
       // Get top requested items
-      try {
-        const topRes = await reportService.getMostRequested({
-          startDate: startDate.toISOString().split('T')[0],
-          endDate: endDate.toISOString().split('T')[0],
-          limit: 10
-        });
-        
-        // Transform the data for the chart
-        const topItemsData = (topRes.data || []).map(item => ({
-          name: item.product_name || item.productName || item.name || 'Unknown',
-          count: item.request_count || item.requestCount || item.count || 0,
-          product_code: item.product_code || item.productCode || item.code
-        }));
-        
-        setTopItems(topItemsData);
-      } catch (err) {
-        console.warn('Could not load top items:', err);
-        setTopItems([]);
-      }
+      const itemRequestMap = new Map();
+      mappedRequests.forEach(req => {
+        const key = req.productName || 'Unknown';
+        if (itemRequestMap.has(key)) {
+          const existing = itemRequestMap.get(key);
+          existing.count += 1;
+          existing.quantity += req.quantityRequested || 0;
+        } else {
+          itemRequestMap.set(key, {
+            name: key,
+            count: 1,
+            quantity: req.quantityRequested || 0
+          });
+        }
+      });
+
+      const topItemsData = Array.from(itemRequestMap.values())
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 10);
+      
+      setTopItems(topItemsData);
 
       // Set recent activity
       setRecentActivity(mappedRequests.slice(0, 10));
-
-      // Set inventory valuation
-      setInventoryValuation(valuationRes.data?.totalValue || valuationRes.data?.total_value || 0);
 
     } catch (err) {
       console.error('Report load error:', err);
@@ -185,8 +226,8 @@ const AdminReports = () => {
       ...requestStatus.map(item => [item.label, item.value]),
       [''],
       ['Top Requested Items'],
-      ['Product Name', 'Request Count', 'Product Code'],
-      ...topItems.slice(0, 10).map(item => [item.name, item.count, item.product_code || 'N/A'])
+      ['Product Name', 'Request Count', 'Total Quantity'],
+      ...topItems.map(item => [item.name, item.count, item.quantity])
     ];
 
     const csv = csvData.map(row => row.join(',')).join('\n');
@@ -198,6 +239,8 @@ const AdminReports = () => {
     a.click();
     window.URL.revokeObjectURL(url);
   };
+
+  const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#14B8A6', '#F97316'];
 
   if (loading) {
     return (
@@ -269,101 +312,138 @@ const AdminReports = () => {
 
         {/* KPI Cards */}
         <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 mb-8">
-          <div className="bg-white rounded-lg shadow p-6 hover:shadow-lg transition">
+          <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg shadow-lg p-6 text-white hover:shadow-xl transition">
             <div className="flex items-center justify-between mb-2">
-              <p className="text-gray-500 text-sm">Total Items</p>
-              <TrendingUp className="text-blue-600" size={20} />
+              <p className="text-blue-100 text-sm font-medium">Total Items</p>
+              <Package className="text-blue-100" size={24} />
             </div>
-            <h3 className="text-3xl font-bold text-gray-900">{kpis.totalItems}</h3>
-            <p className="text-xs text-gray-500 mt-1">Inventory items</p>
+            <h3 className="text-4xl font-bold mb-1">{kpis.totalItems}</h3>
+            <p className="text-xs text-blue-100">In inventory</p>
           </div>
 
-          <div className="bg-white rounded-lg shadow p-6 hover:shadow-lg transition">
+          <div className="bg-gradient-to-br from-yellow-500 to-yellow-600 rounded-lg shadow-lg p-6 text-white hover:shadow-xl transition">
             <div className="flex items-center justify-between mb-2">
-              <p className="text-gray-500 text-sm">Pending Requests</p>
-              <TrendingUp className="text-yellow-600" size={20} />
+              <p className="text-yellow-100 text-sm font-medium">Pending</p>
+              <Clock className="text-yellow-100" size={24} />
             </div>
-            <h3 className="text-3xl font-bold text-gray-900">{kpis.pendingRequests}</h3>
-            <p className="text-xs text-gray-500 mt-1">Awaiting approval</p>
+            <h3 className="text-4xl font-bold mb-1">{kpis.pendingRequests}</h3>
+            <p className="text-xs text-yellow-100">Awaiting approval</p>
           </div>
 
-          <div className="bg-white rounded-lg shadow p-6 hover:shadow-lg transition">
+          <div className="bg-gradient-to-br from-red-500 to-red-600 rounded-lg shadow-lg p-6 text-white hover:shadow-xl transition">
             <div className="flex items-center justify-between mb-2">
-              <p className="text-gray-500 text-sm">Low Stock</p>
-              <TrendingDown className="text-red-600" size={20} />
+              <p className="text-red-100 text-sm font-medium">Low Stock</p>
+              <TrendingDown className="text-red-100" size={24} />
             </div>
-            <h3 className="text-3xl font-bold text-gray-900">{kpis.lowStockItems}</h3>
-            <p className="text-xs text-gray-500 mt-1">Need restock</p>
+            <h3 className="text-4xl font-bold mb-1">{kpis.lowStockItems}</h3>
+            <p className="text-xs text-red-100">Need restock</p>
           </div>
 
-          <div className="bg-white rounded-lg shadow p-6 hover:shadow-lg transition">
+          <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-lg shadow-lg p-6 text-white hover:shadow-xl transition">
             <div className="flex items-center justify-between mb-2">
-              <p className="text-gray-500 text-sm">Active Staff</p>
-              <TrendingUp className="text-green-600" size={20} />
+              <p className="text-green-100 text-sm font-medium">Active Staff</p>
+              <Users className="text-green-100" size={24} />
             </div>
-            <h3 className="text-3xl font-bold text-gray-900">{kpis.activeStaff}</h3>
-            <p className="text-xs text-gray-500 mt-1">Team members</p>
+            <h3 className="text-4xl font-bold mb-1">{kpis.activeStaff}</h3>
+            <p className="text-xs text-green-100">Team members</p>
           </div>
 
-          <div className="bg-white rounded-lg shadow p-6 hover:shadow-lg transition">
+          <div className="bg-gradient-to-br from-purple-500 to-purple-600 rounded-lg shadow-lg p-6 text-white hover:shadow-xl transition">
             <div className="flex items-center justify-between mb-2">
-              <p className="text-gray-500 text-sm">Valuation</p>
-              <TrendingUp className="text-purple-600" size={20} />
+              <p className="text-purple-100 text-sm font-medium">Valuation</p>
+              <TrendingUp className="text-purple-100" size={24} />
             </div>
-            <h3 className="text-2xl font-bold text-gray-900">₱{inventoryValuation.toLocaleString()}</h3>
-            <p className="text-xs text-gray-500 mt-1">Total inventory</p>
+            <h3 className="text-2xl font-bold mb-1">₱{inventoryValuation.toLocaleString()}</h3>
+            <p className="text-xs text-purple-100">Total value</p>
           </div>
         </section>
 
         {/* Request Stats */}
         <section className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <div className="bg-white rounded-lg shadow p-6">
-            <p className="text-gray-500 text-sm mb-1">Total Requests</p>
-            <h3 className="text-2xl font-bold">{monthlyStats.totalRequests}</h3>
-            <p className="text-xs text-gray-500 mt-1">In selected period</p>
+          <div className="bg-white rounded-lg shadow-lg p-6 hover:shadow-xl transition">
+            <div className="flex items-center justify-between mb-4">
+              <p className="text-gray-600 font-medium">Total Requests</p>
+              <div className="p-3 bg-blue-100 rounded-lg">
+                <Package className="text-blue-600" size={24} />
+              </div>
+            </div>
+            <h3 className="text-3xl font-bold text-gray-900">{monthlyStats.totalRequests}</h3>
+            <p className="text-sm text-gray-500 mt-2">In selected period</p>
           </div>
-          <div className="bg-white rounded-lg shadow p-6">
-            <p className="text-gray-500 text-sm mb-1">Approved Requests</p>
-            <h3 className="text-2xl font-bold text-green-600">{monthlyStats.approvedRequests}</h3>
-            <p className="text-xs text-gray-500 mt-1">Successfully processed</p>
+          
+          <div className="bg-white rounded-lg shadow-lg p-6 hover:shadow-xl transition">
+            <div className="flex items-center justify-between mb-4">
+              <p className="text-gray-600 font-medium">Approved</p>
+              <div className="p-3 bg-green-100 rounded-lg">
+                <TrendingUp className="text-green-600" size={24} />
+              </div>
+            </div>
+            <h3 className="text-3xl font-bold text-green-600">{monthlyStats.approvedRequests}</h3>
+            <p className="text-sm text-gray-500 mt-2">Successfully processed</p>
           </div>
-          <div className="bg-white rounded-lg shadow p-6">
-            <p className="text-gray-500 text-sm mb-1">Approval Rate</p>
-            <h3 className="text-2xl font-bold text-blue-600">{monthlyStats.approvalRate}%</h3>
-            <p className="text-xs text-gray-500 mt-1">Success rate</p>
+          
+          <div className="bg-white rounded-lg shadow-lg p-6 hover:shadow-xl transition">
+            <div className="flex items-center justify-between mb-4">
+              <p className="text-gray-600 font-medium">Approval Rate</p>
+              <div className="p-3 bg-purple-100 rounded-lg">
+                <TrendingUp className="text-purple-600" size={24} />
+              </div>
+            </div>
+            <h3 className="text-3xl font-bold text-purple-600">{monthlyStats.approvalRate}%</h3>
+            <p className="text-sm text-gray-500 mt-2">Success rate</p>
           </div>
         </section>
 
-        {/* Charts */}
+        {/* Charts Row 1 */}
         <section className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-          <div className="bg-white rounded-lg shadow p-6">
-            <h3 className="font-semibold mb-4">Stock Movement Trend</h3>
-            {stockTrend.length > 0 ? (
+          {/* Daily Request Trend */}
+          <div className="bg-white rounded-lg shadow-lg p-6">
+            <h3 className="font-bold text-lg mb-4 text-gray-800">Daily Request Trend</h3>
+            {dailyRequestTrend.length > 0 ? (
               <ResponsiveContainer width="100%" height={300}>
-                <AreaChart data={stockTrend}>
-                  <defs>
-                    <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.8}/>
-                      <stop offset="95%" stopColor="#3B82F6" stopOpacity={0.1}/>
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="label" />
-                  <YAxis />
-                  <Tooltip />
-                  <Area type="monotone" dataKey="value" stroke="#3B82F6" fillOpacity={1} fill="url(#colorValue)" />
-                </AreaChart>
+                <LineChart data={dailyRequestTrend}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                  <XAxis 
+                    dataKey="date" 
+                    tick={{ fontSize: 12 }}
+                    stroke="#6b7280"
+                  />
+                  <YAxis 
+                    tick={{ fontSize: 12 }}
+                    stroke="#6b7280"
+                  />
+                  <Tooltip 
+                    contentStyle={{ 
+                      backgroundColor: '#fff', 
+                      border: '1px solid #e5e7eb',
+                      borderRadius: '8px',
+                      boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
+                    }}
+                  />
+                  <Line 
+                    type="monotone" 
+                    dataKey="count" 
+                    stroke="#3B82F6" 
+                    strokeWidth={3}
+                    dot={{ fill: '#3B82F6', r: 5 }}
+                    activeDot={{ r: 7 }}
+                  />
+                </LineChart>
               </ResponsiveContainer>
             ) : (
               <div className="h-[300px] flex items-center justify-center text-gray-400">
-                No stock movement data available
+                <div className="text-center">
+                  <Clock size={48} className="mx-auto mb-3 text-gray-300" />
+                  <p>No request data available</p>
+                </div>
               </div>
             )}
           </div>
 
-          <div className="bg-white rounded-lg shadow p-6">
-            <h3 className="font-semibold mb-4">Request Status Distribution</h3>
-            {requestStatus.some(s => s.value > 0) ? (
+          {/* Request Status Distribution */}
+          <div className="bg-white rounded-lg shadow-lg p-6">
+            <h3 className="font-bold text-lg mb-4 text-gray-800">Request Status Distribution</h3>
+            {requestStatus.length > 0 && requestStatus.some(s => s.value > 0) ? (
               <ResponsiveContainer width="100%" height={300}>
                 <PieChart>
                   <Pie 
@@ -373,77 +453,154 @@ const AdminReports = () => {
                     cx="50%" 
                     cy="50%" 
                     outerRadius={100}
-                    label={(entry) => `${entry.label}: ${entry.value}`}
+                    label={({ label, value, percent }) => `${label}: ${value} (${(percent * 100).toFixed(0)}%)`}
+                    labelLine={{ stroke: '#6b7280' }}
                   >
                     {requestStatus.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={['#10B981', '#F59E0B', '#EF4444'][index]} />
+                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                     ))}
                   </Pie>
-                  <Tooltip />
-                  <Legend />
+                  <Tooltip 
+                    contentStyle={{ 
+                      backgroundColor: '#fff', 
+                      border: '1px solid #e5e7eb',
+                      borderRadius: '8px',
+                      boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
+                    }}
+                  />
                 </PieChart>
               </ResponsiveContainer>
             ) : (
               <div className="h-[300px] flex items-center justify-center text-gray-400">
-                No request data available
+                <div className="text-center">
+                  <Package size={48} className="mx-auto mb-3 text-gray-300" />
+                  <p>No request data available</p>
+                </div>
               </div>
             )}
           </div>
         </section>
 
-        {/* Top Requested Items */}
-        <section className="bg-white rounded-lg shadow p-6 mb-8">
-          <h3 className="font-semibold mb-4">Top Requested Items</h3>
-          {topItems.length > 0 ? (
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={topItems.slice(0, 10)}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis 
-                  dataKey="name" 
-                  angle={-45} 
-                  textAnchor="end" 
-                  height={100}
-                  interval={0}
-                />
-                <YAxis />
-                <Tooltip />
-                <Bar dataKey="count" fill="#6366F1" radius={[8, 8, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          ) : (
-            <div className="h-[300px] flex items-center justify-center text-gray-400">
-              No requested items data available for the selected period
-            </div>
-          )}
+        {/* Charts Row 2 */}
+        <section className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+          {/* Top Requested Items */}
+          <div className="bg-white rounded-lg shadow-lg p-6">
+            <h3 className="font-bold text-lg mb-4 text-gray-800">Top 10 Requested Items</h3>
+            {topItems.length > 0 ? (
+              <ResponsiveContainer width="100%" height={350}>
+                <BarChart data={topItems} layout="horizontal">
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                  <XAxis 
+                    type="number"
+                    tick={{ fontSize: 12 }}
+                    stroke="#6b7280"
+                  />
+                  <YAxis 
+                    dataKey="name" 
+                    type="category"
+                    width={150}
+                    tick={{ fontSize: 11 }}
+                    stroke="#6b7280"
+                  />
+                  <Tooltip 
+                    contentStyle={{ 
+                      backgroundColor: '#fff', 
+                      border: '1px solid #e5e7eb',
+                      borderRadius: '8px',
+                      boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
+                    }}
+                    formatter={(value, name) => [value, name === 'count' ? 'Requests' : name === 'quantity' ? 'Total Qty' : name]}
+                  />
+                  <Bar dataKey="count" fill="#6366F1" radius={[0, 8, 8, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="h-[350px] flex items-center justify-center text-gray-400">
+                <div className="text-center">
+                  <Package size={48} className="mx-auto mb-3 text-gray-300" />
+                  <p>No requested items data</p>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Product Type Distribution */}
+          <div className="bg-white rounded-lg shadow-lg p-6">
+            <h3 className="font-bold text-lg mb-4 text-gray-800">Inventory by Product Type</h3>
+            {productTypeDistribution.length > 0 ? (
+              <ResponsiveContainer width="100%" height={350}>
+                <BarChart data={productTypeDistribution}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                  <XAxis 
+                    dataKey="name" 
+                    tick={{ fontSize: 12 }}
+                    stroke="#6b7280"
+                    angle={-45}
+                    textAnchor="end"
+                    height={80}
+                  />
+                  <YAxis 
+                    tick={{ fontSize: 12 }}
+                    stroke="#6b7280"
+                  />
+                  <Tooltip 
+                    contentStyle={{ 
+                      backgroundColor: '#fff', 
+                      border: '1px solid #e5e7eb',
+                      borderRadius: '8px',
+                      boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
+                    }}
+                  />
+                  <Bar dataKey="value" fill="#10B981" radius={[8, 8, 0, 0]}>
+                    {productTypeDistribution.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="h-[350px] flex items-center justify-center text-gray-400">
+                <div className="text-center">
+                  <Package size={48} className="mx-auto mb-3 text-gray-300" />
+                  <p>No product type data</p>
+                </div>
+              </div>
+            )}
+          </div>
         </section>
 
         {/* Recent Activity */}
-        <section className="bg-white rounded-lg shadow overflow-hidden">
-          <div className="p-6 border-b">
-            <h3 className="font-semibold">Recent Stock Requests</h3>
+        <section className="bg-white rounded-lg shadow-lg overflow-hidden">
+          <div className="p-6 border-b bg-gradient-to-r from-blue-50 to-purple-50">
+            <h3 className="font-bold text-lg text-gray-800">Recent Stock Requests</h3>
+            <p className="text-sm text-gray-600 mt-1">Latest activity in your inventory system</p>
           </div>
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
                   {['Request ID', 'Product', 'Quantity', 'Requested By', 'Date', 'Status'].map((h) => (
-                    <th key={h} className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{h}</th>
+                    <th key={h} className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {recentActivity.length > 0 ? recentActivity.map((req) => (
-                  <tr key={req.id}>
-                    <td className="px-6 py-4 text-sm font-medium">{req.code}</td>
-                    <td className="px-6 py-4 text-sm">{req.productName || 'N/A'}</td>
-                    <td className="px-6 py-4 text-sm font-semibold">{req.quantityRequested}</td>
-                    <td className="px-6 py-4 text-sm">{req.requestedBy || 'Unknown'}</td>
-                    <td className="px-6 py-4 text-sm">
-                      {req.createdAt ? new Date(req.createdAt).toLocaleDateString() : 'N/A'}
+                  <tr key={req.id} className="hover:bg-gray-50 transition">
+                    <td className="px-6 py-4 text-sm font-medium text-gray-900">{req.code || req.id}</td>
+                    <td className="px-6 py-4 text-sm text-gray-700">{req.productName || 'N/A'}</td>
+                    <td className="px-6 py-4 text-sm font-semibold text-blue-600">{req.quantityRequested}</td>
+                    <td className="px-6 py-4 text-sm text-gray-700">{req.requestedBy || 'Unknown'}</td>
+                    <td className="px-6 py-4 text-sm text-gray-500">
+                      {req.createdAt ? new Date(req.createdAt).toLocaleDateString('en-US', { 
+                        year: 'numeric', 
+                        month: 'short', 
+                        day: 'numeric' 
+                      }) : 'N/A'}
                     </td>
                     <td className="px-6 py-4">
-                      <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
-                        req.status === 'Approved' ? 'bg-green-100 text-green-800' :
+                      <span className={`px-3 py-1 text-xs font-semibold rounded-full ${
+                        req.status === 'Approved' || req.status === 'Completed' ? 'bg-green-100 text-green-800' :
                         req.status === 'Pending' ? 'bg-yellow-100 text-yellow-800' :
                         'bg-red-100 text-red-800'
                       }`}>
@@ -453,8 +610,12 @@ const AdminReports = () => {
                   </tr>
                 )) : (
                   <tr>
-                    <td colSpan="6" className="px-6 py-4 text-center text-gray-500">
-                      No recent activity
+                    <td colSpan="6" className="px-6 py-12 text-center">
+                      <div className="text-gray-400">
+                        <AlertCircle size={48} className="mx-auto mb-3 text-gray-300" />
+                        <p className="text-lg font-medium">No recent activity</p>
+                        <p className="text-sm mt-1">Stock requests will appear here</p>
+                      </div>
                     </td>
                   </tr>
                 )}

@@ -1,9 +1,10 @@
+// backend/src/services/inventoryService.js
 const inventoryModel = require('../models/inventoryModel');
 
 const inventoryService = {
   // Get all inventory
   getAllInventory: async (filters = {}) => {
-    return await inventoryModel.getAll(filters.status, filters.categoryId);
+    return await inventoryModel.getAll(filters.status, filters.productTypeId); // Changed from categoryId
   },
 
   // Get single item
@@ -17,15 +18,12 @@ const inventoryService = {
 
   // Add new product
   addProduct: async (productData, adminId) => {
-    // Check if product code already exists
-    const existing = await inventoryModel.getByProductCode(productData.productCode);
-    if (existing) {
-      throw new Error('Product code already exists');
-    }
+    // REMOVED: Check for product code (field no longer exists)
+    // REMOVED: const existing = await inventoryModel.getByProductCode(productData.productCode);
 
-    // Validate required fields
-    if (!productData.productName || !productData.productCode || !productData.unitPrice) {
-      throw new Error('Product name, code, and price are required');
+    // Validate required fields (removed productCode from validation)
+    if (!productData.productName || !productData.unitPrice) {
+      throw new Error('Product name and price are required');
     }
 
     return await inventoryModel.addProduct(productData, adminId);

@@ -9,11 +9,11 @@ const AdminInventory = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [inventory, setInventory] = useState([]);
-  const [categories, setCategories] = useState([]);
+  const [productTypes, setProductTypes] = useState([]); // Changed from categories
   
   // Filters
   const [search, setSearch] = useState('');
-  const [categoryFilter, setCategoryFilter] = useState('All Categories');
+  const [productTypeFilter, setProductTypeFilter] = useState('All Product Types'); // Changed
   const [stockStatusFilter, setStockStatusFilter] = useState('All Items');
   
   // Modal state
@@ -22,10 +22,10 @@ const AdminInventory = () => {
   const [currentItem, setCurrentItem] = useState(null);
   const [formData, setFormData] = useState({
     name: '',
-    code: '',
-    categoryId: '',
+    // code: '', // REMOVED
+    productTypeId: '', // Changed from categoryId
     stock: 0,
-    threshold: 10,
+    size: '', // Changed from threshold
     unit: 'pcs',
     price: 0,
     description: ''
@@ -39,17 +39,17 @@ const AdminInventory = () => {
       setLoading(true);
       setError(null);
       
-      const [inventoryRes, categoriesRes] = await Promise.all([
+      const [inventoryRes, productTypesRes] = await Promise.all([
         inventoryService.getAll(),
-        inventoryService.getCategories()
+        inventoryService.getProductTypes() // Changed from getCategories
       ]);
       
       // Map backend data to frontend format
       const mappedInventory = dataMapper.mapInventoryList(inventoryRes.data);
-      const mappedCategories = dataMapper.mapCategoryList(categoriesRes.data);
+      const mappedProductTypes = dataMapper.mapProductTypeList(productTypesRes.data); // Changed
       
       setInventory(mappedInventory);
-      setCategories(mappedCategories);
+      setProductTypes(mappedProductTypes); // Changed
     } catch (err) {
       console.error('Inventory fetch error:', err);
       setError(err.response?.data?.message || err.message || 'Failed to load inventory');
@@ -63,16 +63,16 @@ const AdminInventory = () => {
   }, []);
 
   const filteredInventory = inventory.filter((item) => {
-    const matchesSearch = item.name?.toLowerCase().includes(search.toLowerCase()) ||
-                         item.code?.toLowerCase().includes(search.toLowerCase());
-    const matchesCategory = categoryFilter === 'All Categories' || item.category === categoryFilter;
+    const matchesSearch = item.name?.toLowerCase().includes(search.toLowerCase());
+    // Removed product code from search
+    const matchesProductType = productTypeFilter === 'All Product Types' || item.productType === productTypeFilter; // Changed
     
     let matchesStock = true;
-    if (stockStatusFilter === 'In Stock') matchesStock = item.stock > item.threshold;
-    else if (stockStatusFilter === 'Low Stock') matchesStock = item.stock <= item.threshold && item.stock > 0;
+    if (stockStatusFilter === 'In Stock') matchesStock = item.stock > item.size; // Changed threshold to size
+    else if (stockStatusFilter === 'Low Stock') matchesStock = item.stock <= item.size && item.stock > 0; // Changed
     else if (stockStatusFilter === 'Out of Stock') matchesStock = item.stock === 0;
 
-    return matchesSearch && matchesCategory && matchesStock;
+    return matchesSearch && matchesProductType && matchesStock; // Changed
   });
 
   const handleOpenModal = (mode, item = null) => {
@@ -82,10 +82,10 @@ const AdminInventory = () => {
     if (mode === 'edit' && item) {
       setFormData({
         name: item.name || '',
-        code: item.code || '',
-        categoryId: item.categoryId || '',
+        // code: item.code || '', // REMOVED
+        productTypeId: item.productTypeId || '', // Changed from categoryId
         stock: item.stock || 0,
-        threshold: item.threshold || 10,
+        size: item.size || '', // Changed from threshold
         unit: item.unit || 'pcs',
         price: item.price || 0,
         description: item.description || ''
@@ -93,10 +93,10 @@ const AdminInventory = () => {
     } else {
       setFormData({
         name: '',
-        code: '',
-        categoryId: '',
+        // code: '', // REMOVED
+        productTypeId: '', // Changed from categoryId
         stock: 0,
-        threshold: 10,
+        size: '', // Changed from threshold
         unit: 'pcs',
         price: 0,
         description: ''
@@ -112,7 +112,7 @@ const AdminInventory = () => {
   };
 
   const handleSubmit = async () => {
-    if (!formData.name || !formData.code || !formData.categoryId) {
+    if (!formData.name || !formData.productTypeId) { // Removed code validation, changed categoryId
       alert('Please fill in all required fields');
       return;
     }
@@ -132,7 +132,9 @@ const AdminInventory = () => {
       fetchInventory();
     } catch (err) {
       console.error('Submit error:', err);
-      alert(err.response?.data?.message || err.message || 'Operation failed');
+      console.error('Error response:', err.response?.data);
+      console.error('Form data sent:', formData);
+      alert(err.response?.data?.message || err.response?.data?.error || err.message || 'Operation failed');
     } finally {
       setSubmitting(false);
     }
@@ -239,15 +241,15 @@ const AdminInventory = () => {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Product Type</label>
               <select 
                 className="w-full border rounded-lg px-3 py-2" 
-                value={categoryFilter} 
-                onChange={(e) => setCategoryFilter(e.target.value)}
+                value={productTypeFilter} 
+                onChange={(e) => setProductTypeFilter(e.target.value)}
               >
-                <option>All Categories</option>
-                {categories.map(cat => (
-                  <option key={cat.id} value={cat.name}>{cat.name}</option>
+                <option>All Product Types</option>
+                {productTypes.map(type => (
+                  <option key={type.id} value={type.name}>{type.name}</option>
                 ))}
               </select>
             </div>
@@ -276,7 +278,8 @@ const AdminInventory = () => {
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
-                  {['Code', 'Name', 'Category', 'Stock', 'Threshold', 'Unit', 'Price', 'Status', 'Actions'].map((h) => (
+                  {/* Removed 'Code' column */}
+                  {['Name', 'Product Type', 'Stock', 'Size', 'Unit', 'Price', 'Status', 'Actions'].map((h) => (
                     <th key={h} className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{h}</th>
                   ))}
                 </tr>
@@ -285,7 +288,7 @@ const AdminInventory = () => {
                 {filteredInventory.length > 0 ? filteredInventory.map((item) => {
                   const status =
                     item.stock === 0 ? 'Out of Stock' :
-                    item.stock <= item.threshold ? 'Low Stock' : 'In Stock';
+                    item.stock <= item.size ? 'Low Stock' : 'In Stock'; // Changed threshold to size
                   const statusColor =
                     status === 'In Stock' ? 'bg-green-100 text-green-800' :
                     status === 'Low Stock' ? 'bg-yellow-100 text-yellow-800' :
@@ -293,11 +296,11 @@ const AdminInventory = () => {
 
                   return (
                     <tr key={item.id}>
-                      <td className="px-6 py-4 text-sm font-medium">{item.code}</td>
+                      {/* Removed product code cell */}
                       <td className="px-6 py-4 text-sm">{item.name}</td>
-                      <td className="px-6 py-4 text-sm">{item.category}</td>
+                      <td className="px-6 py-4 text-sm">{item.productType}</td> {/* Changed from category */}
                       <td className="px-6 py-4 text-sm font-semibold">{item.stock}</td>
-                      <td className="px-6 py-4 text-sm">{item.threshold}</td>
+                      <td className="px-6 py-4 text-sm">{item.size}</td> {/* Changed from threshold */}
                       <td className="px-6 py-4 text-sm">{item.unit || 'pcs'}</td>
                       <td className="px-6 py-4 text-sm">₱{item.price?.toFixed(2) || '0.00'}</td>
                       <td className="px-6 py-4">
@@ -329,7 +332,7 @@ const AdminInventory = () => {
                   );
                 }) : (
                   <tr>
-                    <td colSpan="9" className="px-6 py-4 text-center text-gray-500">
+                    <td colSpan="8" className="px-6 py-4 text-center text-gray-500">
                       No inventory items found
                     </td>
                   </tr>
@@ -353,18 +356,9 @@ const AdminInventory = () => {
               </div>
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium mb-1">Item Code*</label>
-                  <input
-                    type="text"
-                    className="w-full border rounded-lg px-3 py-2"
-                    value={formData.code}
-                    onChange={(e) => setFormData({...formData, code: e.target.value})}
-                    disabled={modalMode === 'edit'}
-                  />
-                </div>
+                {/* REMOVED: Item Code field */}
                 
-                <div>
+                <div className="md:col-span-2">
                   <label className="block text-sm font-medium mb-1">Product Name*</label>
                   <input
                     type="text"
@@ -375,15 +369,15 @@ const AdminInventory = () => {
                 </div>
                 
                 <div>
-                  <label className="block text-sm font-medium mb-1">Category*</label>
+                  <label className="block text-sm font-medium mb-1">Product Type*</label>
                   <select
                     className="w-full border rounded-lg px-3 py-2"
-                    value={formData.categoryId}
-                    onChange={(e) => setFormData({...formData, categoryId: e.target.value})}
+                    value={formData.productTypeId}
+                    onChange={(e) => setFormData({...formData, productTypeId: e.target.value})}
                   >
-                    <option value="">Select Category</option>
-                    {categories.map(cat => (
-                      <option key={cat.id} value={cat.id}>{cat.name}</option>
+                    <option value="">Select Product Type</option>
+                    {productTypes.map(type => (
+                      <option key={type.id} value={type.id}>{type.name}</option>
                     ))}
                   </select>
                 </div>
@@ -400,14 +394,34 @@ const AdminInventory = () => {
                 </div>
                 
                 <div>
-                  <label className="block text-sm font-medium mb-1">Threshold*</label>
-                  <input
-                    type="number"
-                    min="0"
+                  <label className="block text-sm font-medium mb-1">Size*</label>
+                  <select
                     className="w-full border rounded-lg px-3 py-2"
-                    value={formData.threshold}
-                    onChange={(e) => setFormData({...formData, threshold: parseInt(e.target.value) || 0})}
-                  />
+                    value={formData.size}
+                    onChange={(e) => setFormData({...formData, size: e.target.value})}
+                  >
+                    <option value="">Select Size</option>
+                    <option value="3x100M">3x100M</option>
+                    <option value="2x100M">2x100M</option>
+                    <option value="2x26M">2x26M</option>
+                    <option value="2x30M">2x30M</option>
+                    <option value="2x45M">2x45M</option>
+                    <option value="2x50M">2x50M</option>
+                    <option value="2x75M">2x75M</option>
+                    <option value="2x80M">2x80M</option>
+                    <option value="2x90M">2x90M</option>
+                    <option value="1/2x100M">1/2x100M</option>
+                    <option value="1/2x20M">1/2x20M</option>
+                    <option value="1/2x30M">1/2x30M</option>
+                    <option value="1/2x40M">1/2x40M</option>
+                    <option value="1x100M">1x100M</option>
+                    <option value="1x20M">1x20M</option>
+                    <option value="1x30M">1x30M</option>
+                    <option value="1x40M">1x40M</option>
+                    <option value="1x50M">1x50M</option>
+                    <option value="3/4x20M">3/4x20M</option>
+                    <option value="3/4x30M">3/4x30M</option>
+                  </select>
                 </div>
                 
                 <div>

@@ -47,7 +47,10 @@ const StaffMyRequests = () => {
   const filteredRequests = requests.filter((req) => {
     const matchesSearch = req.code?.toLowerCase().includes(search.toLowerCase()) ||
                          req.productName?.toLowerCase().includes(search.toLowerCase());
-    const matchesStatus = statusFilter === 'All Status' || req.status === statusFilter;
+    
+    const normalizedStatus = req.status?.charAt(0).toUpperCase() + req.status?.slice(1).toLowerCase();
+    const matchesStatus = statusFilter === 'All Status' || normalizedStatus === statusFilter;
+    
     return matchesSearch && matchesStatus;
   });
 
@@ -57,12 +60,14 @@ const StaffMyRequests = () => {
   };
 
   const getStatusColor = (status) => {
-    switch (status) {
-      case 'Approved':
+    const normalizedStatus = status?.toLowerCase();
+    switch (normalizedStatus) {
+      case 'approved':
+      case 'completed':
         return 'bg-green-100 text-green-800';
-      case 'Pending':
+      case 'pending':
         return 'bg-yellow-100 text-yellow-800';
-      case 'Rejected':
+      case 'rejected':
         return 'bg-red-100 text-red-800';
       default:
         return 'bg-gray-100 text-gray-800';
@@ -70,12 +75,14 @@ const StaffMyRequests = () => {
   };
 
   const getStatusIcon = (status) => {
-    switch (status) {
-      case 'Approved':
+    const normalizedStatus = status?.toLowerCase();
+    switch (normalizedStatus) {
+      case 'approved':
+      case 'completed':
         return <CheckCircle className="text-green-600" size={20} />;
-      case 'Pending':
+      case 'pending':
         return <Clock className="text-yellow-600" size={20} />;
-      case 'Rejected':
+      case 'rejected':
         return <XCircle className="text-red-600" size={20} />;
       default:
         return <FileText className="text-gray-600" size={20} />;
@@ -84,9 +91,12 @@ const StaffMyRequests = () => {
 
   const getRequestStats = () => {
     const total = requests.length;
-    const pending = requests.filter(req => req.status === 'Pending').length;
-    const approved = requests.filter(req => req.status === 'Approved').length;
-    const rejected = requests.filter(req => req.status === 'Rejected').length;
+    const pending = requests.filter(req => req.status?.toLowerCase() === 'pending').length;
+    const approved = requests.filter(req => 
+      req.status?.toLowerCase() === 'approved' || 
+      req.status?.toLowerCase() === 'completed'
+    ).length;
+    const rejected = requests.filter(req => req.status?.toLowerCase() === 'rejected').length;
     return { total, pending, approved, rejected };
   };
 
@@ -202,6 +212,7 @@ const StaffMyRequests = () => {
                 <option>All Status</option>
                 <option>Pending</option>
                 <option>Approved</option>
+                <option>Completed</option>
                 <option>Rejected</option>
               </select>
             </div>
@@ -223,37 +234,40 @@ const StaffMyRequests = () => {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {filteredRequests.length > 0 ? filteredRequests.map((req) => (
-                  <tr key={req.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{req.code}</td>
-                    <td className="px-6 py-4 text-sm text-gray-500">
-                      <div>
-                        <p className="font-medium text-gray-900">{req.productName || 'N/A'}</p>
-                        <p className="text-xs text-gray-500">{req.productCode}</p>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-gray-900">{req.quantityRequested}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {req.createdAt ? new Date(req.createdAt).toLocaleString() : 'N/A'}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center">
-                        {getStatusIcon(req.status)}
-                        <span className={`ml-2 px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(req.status)}`}>
-                          {req.status}
-                        </span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">
-                      <button 
-                        onClick={() => handleViewDetails(req)}
-                        className="text-blue-600 hover:text-blue-900 font-medium"
-                      >
-                        View Details
-                      </button>
-                    </td>
-                  </tr>
-                )) : (
+                {filteredRequests.length > 0 ? filteredRequests.map((req) => {
+                  const displayStatus = req.status?.charAt(0).toUpperCase() + req.status?.slice(1).toLowerCase();
+                  
+                  return (
+                    <tr key={req.id} className="hover:bg-gray-50">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{req.code || `#${req.id}`}</td>
+                      <td className="px-6 py-4 text-sm text-gray-500">
+                        <div>
+                          <p className="font-medium text-gray-900">{req.productName || 'N/A'}</p>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-gray-900">{req.quantityRequested}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {req.createdAt ? new Date(req.createdAt).toLocaleDateString() : 'N/A'}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex items-center">
+                          {getStatusIcon(req.status)}
+                          <span className={`ml-2 px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(req.status)}`}>
+                            {displayStatus}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm">
+                        <button 
+                          onClick={() => handleViewDetails(req)}
+                          className="text-blue-600 hover:text-blue-900 font-medium"
+                        >
+                          View Details
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                }) : (
                   <tr>
                     <td colSpan="6" className="px-6 py-12 text-center">
                       <FileText className="mx-auto text-gray-400 mb-3" size={48} />
@@ -289,21 +303,24 @@ const StaffMyRequests = () => {
               
               {/* Status Banner */}
               <div className={`p-4 rounded-lg mb-6 ${
-                selectedRequest.status === 'Approved' ? 'bg-green-50 border border-green-200' :
-                selectedRequest.status === 'Pending' ? 'bg-yellow-50 border border-yellow-200' :
+                selectedRequest.status?.toLowerCase() === 'approved' || selectedRequest.status?.toLowerCase() === 'completed' 
+                  ? 'bg-green-50 border border-green-200' :
+                selectedRequest.status?.toLowerCase() === 'pending' ? 'bg-yellow-50 border border-yellow-200' :
                 'bg-red-50 border border-red-200'
               }`}>
                 <div className="flex items-center">
                   {getStatusIcon(selectedRequest.status)}
                   <div className="ml-3">
                     <p className="font-semibold">
-                      {selectedRequest.status === 'Approved' ? 'Request Approved' :
-                       selectedRequest.status === 'Pending' ? 'Request Pending' :
+                      {selectedRequest.status?.toLowerCase() === 'approved' || selectedRequest.status?.toLowerCase() === 'completed' 
+                        ? 'Request Approved' :
+                       selectedRequest.status?.toLowerCase() === 'pending' ? 'Request Pending' :
                        'Request Rejected'}
                     </p>
                     <p className="text-sm opacity-75">
-                      {selectedRequest.status === 'Approved' ? 'Your request has been approved and will be processed soon.' :
-                       selectedRequest.status === 'Pending' ? 'Your request is awaiting admin approval.' :
+                      {selectedRequest.status?.toLowerCase() === 'approved' || selectedRequest.status?.toLowerCase() === 'completed' 
+                        ? 'Your request has been approved and items added to your inventory.' :
+                       selectedRequest.status?.toLowerCase() === 'pending' ? 'Your request is awaiting admin approval.' :
                        'Your request was not approved. See notes below.'}
                     </p>
                   </div>
@@ -314,21 +331,17 @@ const StaffMyRequests = () => {
               <div className="grid grid-cols-2 gap-4 mb-6">
                 <div>
                   <p className="text-sm text-gray-500">Request ID</p>
-                  <p className="font-semibold">{selectedRequest.code}</p>
+                  <p className="font-semibold">{selectedRequest.code || `#${selectedRequest.id}`}</p>
                 </div>
                 <div>
                   <p className="text-sm text-gray-500">Status</p>
                   <span className={`inline-block px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(selectedRequest.status)}`}>
-                    {selectedRequest.status}
+                    {selectedRequest.status?.charAt(0).toUpperCase() + selectedRequest.status?.slice(1).toLowerCase()}
                   </span>
                 </div>
                 <div>
                   <p className="text-sm text-gray-500">Product Name</p>
                   <p className="font-semibold">{selectedRequest.productName}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500">Product Code</p>
-                  <p className="font-semibold">{selectedRequest.productCode}</p>
                 </div>
                 <div>
                   <p className="text-sm text-gray-500">Quantity Requested</p>
@@ -346,13 +359,15 @@ const StaffMyRequests = () => {
                       <p className="text-sm text-gray-500">Processed By</p>
                       <p className="font-semibold">{selectedRequest.approvedBy}</p>
                     </div>
-                    <div>
-                      <p className="text-sm text-gray-500">Date Processed</p>
-                      <p className="font-semibold">
-                        {selectedRequest.approvalDate ? new Date(selectedRequest.approvalDate).toLocaleString() : 'N/A'}
-                      </p>
-                    </div>
                   </>
+                )}
+                {selectedRequest.approvalDate && (
+                  <div>
+                    <p className="text-sm text-gray-500">Date Processed</p>
+                    <p className="font-semibold">
+                      {new Date(selectedRequest.approvalDate).toLocaleString()}
+                    </p>
+                  </div>
                 )}
               </div>
 
@@ -370,10 +385,12 @@ const StaffMyRequests = () => {
               {selectedRequest.approvalNotes && (
                 <div className="mb-6">
                   <h3 className="font-semibold mb-2 text-gray-700">
-                    {selectedRequest.status === 'Approved' ? 'Approval Notes' : 'Rejection Reason'}
+                    {selectedRequest.status?.toLowerCase() === 'approved' || selectedRequest.status?.toLowerCase() === 'completed' 
+                      ? 'Approval Notes' : 'Rejection Reason'}
                   </h3>
                   <div className={`p-4 rounded-lg ${
-                    selectedRequest.status === 'Approved' ? 'bg-green-50' : 'bg-red-50'
+                    selectedRequest.status?.toLowerCase() === 'approved' || selectedRequest.status?.toLowerCase() === 'completed' 
+                      ? 'bg-green-50' : 'bg-red-50'
                   }`}>
                     <p className="text-sm text-gray-600">{selectedRequest.approvalNotes}</p>
                   </div>
@@ -382,9 +399,9 @@ const StaffMyRequests = () => {
 
               {/* Actions */}
               <div className="flex justify-end space-x-3 pt-4 border-t">
-                {selectedRequest.status === 'Rejected' && (
+                {selectedRequest.status?.toLowerCase() === 'rejected' && (
                   <button 
-                    onClick={() => window.location.href = `/staff/request-stock?itemId=${selectedRequest.inventoryId}`}
+                    onClick={() => window.location.href = '/staff/request-stock'}
                     className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
                   >
                     Create New Request

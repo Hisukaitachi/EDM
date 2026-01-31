@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { RefreshCw, AlertCircle, Package, Search, Filter } from 'react-feather';
+import { Package, RefreshCw, AlertCircle, Search, Filter } from 'react-feather';
 import StaffSidebar from '../components/StaffSidebar';
+import requestService from '../services/requestService';
 import inventoryService from '../services/inventoryService';
 import authService from '../services/authService';
 import dataMapper from '../utils/dataMapper';
@@ -8,35 +9,78 @@ import dataMapper from '../utils/dataMapper';
 const StaffInventory = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [inventory, setInventory] = useState([]);
-  const [categories, setCategories] = useState([]);
+  const [myInventory, setMyInventory] = useState([]);
+  const [productTypes, setProductTypes] = useState([]);
   
   // Filters
   const [search, setSearch] = useState('');
-  const [categoryFilter, setCategoryFilter] = useState('All Categories');
-  const [stockStatusFilter, setStockStatusFilter] = useState('All Items');
+  const [productTypeFilter, setProductTypeFilter] = useState('All Product Types');
   
-  // Selected item for details modal
-  const [selectedItem, setSelectedItem] = useState(null);
-  const [showDetailsModal, setShowDetailsModal] = useState(false);
-
   const user = authService.getStoredUser();
 
-  const fetchInventory = async () => {
+  const fetchMyInventory = async () => {
     try {
       setLoading(true);
       setError(null);
       
-      const [inventoryRes, categoriesRes] = await Promise.all([
-        inventoryService.getAll(),
-        inventoryService.getCategories()
+      // Get all approved/completed requests for this staff member
+      const [requestsResponse, inventoryResponse] = await Promise.all([
+        requestService.getMyRequests(),
+        inventoryService.getAll()
       ]);
       
-      const mappedInventory = dataMapper.mapInventoryList(inventoryRes.data);
-      const mappedCategories = dataMapper.mapCategoryList(categoriesRes.data);
+      const allRequests = dataMapper.mapStockRequestList(requestsResponse.data || []);
+      const allInventoryItems = dataMapper.mapInventoryList(inventoryResponse.data || []);
       
-      setInventory(mappedInventory);
-      setCategories(mappedCategories);
+      // Create a map of inventory items by ID for quick lookup
+      const inventoryMap = new Map();
+      allInventoryItems.forEach(item => {
+        inventoryMap.set(item.id, item);
+      });
+      
+      // Filter only approved/completed requests
+      const approvedRequests = allRequests.filter(
+        req => req.status === 'Approved' || req.status === 'Completed' || req.status === 'completed'
+      );
+      
+      // Group by product and sum quantities
+      const myInventoryMap = new Map();
+      
+      approvedRequests.forEach(req => {
+        const key = req.inventoryId || req.productName;
+        const inventoryItem = inventoryMap.get(req.inventoryId);
+        
+        if (myInventoryMap.has(key)) {
+          const existing = myInventoryMap.get(key);
+          existing.totalReceived += req.quantityRequested;
+          existing.requestCount += 1;
+          existing.lastReceived = new Date(req.approvalDate || req.createdAt);
+        } else {
+          myInventoryMap.set(key, {
+            id: req.inventoryId || key,
+            productName: req.productName,
+            productType: inventoryItem?.productType || req.productType || 'N/A',
+            totalReceived: req.quantityRequested,
+            requestCount: 1,
+            lastReceived: new Date(req.approvalDate || req.createdAt),
+            unit: inventoryItem?.unit || req.unit || 'pcs',
+            size: inventoryItem?.size || 'N/A',
+            price: inventoryItem?.price || 0
+          });
+        }
+      });
+      
+      // Convert map to array and sort by last received date
+      const inventory = Array.from(myInventoryMap.values()).sort(
+        (a, b) => b.lastReceived - a.lastReceived
+      );
+      
+      setMyInventory(inventory);
+      
+      // Extract unique product types
+      const types = [...new Set(inventory.map(item => item.productType).filter(Boolean))];
+      setProductTypes(types);
+      
     } catch (err) {
       console.error('Inventory fetch error:', err);
       setError(err.response?.data?.message || err.message || 'Failed to load inventory');
@@ -46,60 +90,21 @@ const StaffInventory = () => {
   };
 
   useEffect(() => {
-    fetchInventory();
-    
-    // Check if there's a filter from URL params
-    const urlParams = new URLSearchParams(window.location.search);
-    const filter = urlParams.get('filter');
-    if (filter === 'low-stock') {
-      setStockStatusFilter('Low Stock');
-    }
+    fetchMyInventory();
   }, []);
 
-  const filteredInventory = inventory.filter((item) => {
-    const matchesSearch = item.name?.toLowerCase().includes(search.toLowerCase()) ||
-                         item.code?.toLowerCase().includes(search.toLowerCase());
-    const matchesCategory = categoryFilter === 'All Categories' || item.category === categoryFilter;
-    
-    let matchesStock = true;
-    if (stockStatusFilter === 'In Stock') matchesStock = item.stock > item.threshold;
-    else if (stockStatusFilter === 'Low Stock') matchesStock = item.stock <= item.threshold && item.stock > 0;
-    else if (stockStatusFilter === 'Out of Stock') matchesStock = item.stock === 0;
-
-    return matchesSearch && matchesCategory && matchesStock;
+  const filteredInventory = myInventory.filter((item) => {
+    const matchesSearch = item.productName?.toLowerCase().includes(search.toLowerCase());
+    const matchesProductType = productTypeFilter === 'All Product Types' || item.productType === productTypeFilter;
+    return matchesSearch && matchesProductType;
   });
-
-  const handleViewDetails = (item) => {
-    setSelectedItem(item);
-    setShowDetailsModal(true);
-  };
-
-  const handleRequestStock = (item) => {
-    window.location.href = `/staff/request-stock?itemId=${item.id}`;
-  };
-
-  const getStockStatus = (item) => {
-    if (item.stock === 0) return { label: 'Out of Stock', color: 'bg-red-100 text-red-800' };
-    if (item.stock <= item.threshold) return { label: 'Low Stock', color: 'bg-yellow-100 text-yellow-800' };
-    return { label: 'In Stock', color: 'bg-green-100 text-green-800' };
-  };
-
-  const getStockStats = () => {
-    const total = inventory.length;
-    const inStock = inventory.filter(item => item.stock > item.threshold).length;
-    const lowStock = inventory.filter(item => item.stock <= item.threshold && item.stock > 0).length;
-    const outOfStock = inventory.filter(item => item.stock === 0).length;
-    return { total, inStock, lowStock, outOfStock };
-  };
-
-  const stats = getStockStats();
 
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-100">
         <div className="text-center">
           <RefreshCw className="animate-spin h-12 w-12 text-blue-600 mx-auto mb-4" />
-          <p className="text-gray-600">Loading inventory...</p>
+          <p className="text-gray-600">Loading your inventory...</p>
         </div>
       </div>
     );
@@ -110,19 +115,20 @@ const StaffInventory = () => {
       <StaffSidebar />
       
       <main className="ml-64 flex-1 p-8">
-        {/* Header */}
         <div className="flex justify-between items-center mb-8">
           <div>
-            <h1 className="text-2xl font-bold text-gray-800">View Inventory</h1>
-            <p className="text-gray-600">Browse all available stock items</p>
+            <h1 className="text-2xl font-bold text-gray-800">My Inventory</h1>
+            <p className="text-gray-600">Items you have received from approved requests</p>
           </div>
-          <button 
-            onClick={fetchInventory}
-            className="p-2 rounded-lg hover:bg-gray-200 transition"
-            title="Refresh"
-          >
-            <RefreshCw size={20} />
-          </button>
+          <div className="flex items-center space-x-4">
+            <button 
+              onClick={fetchMyInventory}
+              className="p-2 rounded-lg hover:bg-gray-200 transition"
+              title="Refresh"
+            >
+              <RefreshCw size={20} />
+            </button>
+          </div>
         </div>
 
         {error && (
@@ -131,82 +137,57 @@ const StaffInventory = () => {
             <div>
               <h3 className="font-semibold text-red-800">Error</h3>
               <p className="text-red-700 text-sm">{error}</p>
-              <button 
-                onClick={fetchInventory}
-                className="text-red-600 text-sm underline mt-2 hover:text-red-800"
-              >
-                Try again
-              </button>
             </div>
           </div>
         )}
 
-        {/* Stats Cards */}
-        <section className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-          <div className="bg-white rounded-lg shadow p-4">
-            <p className="text-gray-500 text-sm mb-1">Total Items</p>
-            <h3 className="text-2xl font-bold text-gray-900">{stats.total}</h3>
+        {/* Summary Card */}
+        <div className="bg-gradient-to-r from-blue-600 to-blue-800 rounded-xl shadow-md overflow-hidden text-white mb-8">
+          <div className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-bold mb-2">Your Inventory Summary</h2>
+                <p className="text-blue-100">
+                  You have received <strong>{myInventory.length}</strong> different item(s) through <strong>{myInventory.reduce((sum, item) => sum + item.requestCount, 0)}</strong> approved request(s).
+                </p>
+              </div>
+              <div className="p-4 bg-white bg-opacity-20 rounded-lg">
+                <Package size={48} />
+              </div>
+            </div>
           </div>
-          <div className="bg-white rounded-lg shadow p-4">
-            <p className="text-gray-500 text-sm mb-1">In Stock</p>
-            <h3 className="text-2xl font-bold text-green-600">{stats.inStock}</h3>
-          </div>
-          <div className="bg-white rounded-lg shadow p-4">
-            <p className="text-gray-500 text-sm mb-1">Low Stock</p>
-            <h3 className="text-2xl font-bold text-yellow-600">{stats.lowStock}</h3>
-          </div>
-          <div className="bg-white rounded-lg shadow p-4">
-            <p className="text-gray-500 text-sm mb-1">Out of Stock</p>
-            <h3 className="text-2xl font-bold text-red-600">{stats.outOfStock}</h3>
-          </div>
-        </section>
+        </div>
 
         {/* Filters */}
         <div className="bg-white rounded-lg shadow p-6 mb-8">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                <Search size={16} className="inline mr-1" />
-                Search Items
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                <Search size={16} className="inline mr-2" />
+                Search
               </label>
               <input 
                 type="text" 
-                placeholder="Search by name or code..." 
-                className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" 
+                placeholder="Search items..." 
+                className="w-full border rounded-lg px-3 py-2" 
                 value={search} 
                 onChange={(e) => setSearch(e.target.value)} 
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                <Filter size={16} className="inline mr-1" />
-                Category
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                <Filter size={16} className="inline mr-2" />
+                Product Type
               </label>
               <select 
-                className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" 
-                value={categoryFilter} 
-                onChange={(e) => setCategoryFilter(e.target.value)}
+                className="w-full border rounded-lg px-3 py-2" 
+                value={productTypeFilter} 
+                onChange={(e) => setProductTypeFilter(e.target.value)}
               >
-                <option>All Categories</option>
-                {categories.map(cat => (
-                  <option key={cat.id} value={cat.name}>{cat.name}</option>
+                <option>All Product Types</option>
+                {productTypes.map(type => (
+                  <option key={type} value={type}>{type}</option>
                 ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                <Package size={16} className="inline mr-1" />
-                Stock Status
-              </label>
-              <select 
-                className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" 
-                value={stockStatusFilter} 
-                onChange={(e) => setStockStatusFilter(e.target.value)}
-              >
-                <option>All Items</option>
-                <option>In Stock</option>
-                <option>Low Stock</option>
-                <option>Out of Stock</option>
               </select>
             </div>
           </div>
@@ -215,64 +196,48 @@ const StaffInventory = () => {
         {/* Inventory Table */}
         <div className="bg-white rounded-lg shadow overflow-hidden">
           <div className="p-6 border-b">
-            <h3 className="font-semibold text-lg">Inventory Items ({filteredInventory.length})</h3>
+            <h3 className="font-semibold">My Items ({filteredInventory.length})</h3>
           </div>
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
-                  {['Code', 'Product Name', 'Category', 'Stock', 'Threshold', 'Unit', 'Status', 'Actions'].map((h) => (
-                    <th key={h} className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{h}</th>
+                  {['Product Name', 'Product Type', 'Size', 'Total Received', 'Unit', 'Request Count', 'Last Received'].map((h) => (
+                    <th key={h} className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {filteredInventory.length > 0 ? filteredInventory.map((item) => {
-                  const status = getStockStatus(item);
-                  
-                  return (
-                    <tr key={item.id} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{item.code}</td>
-                      <td className="px-6 py-4 text-sm text-gray-500">{item.name}</td>
-                      <td className="px-6 py-4 text-sm text-gray-500">{item.category}</td>
-                      <td className="px-6 py-4 text-sm">
-                        <span className={`font-semibold ${
-                          item.stock === 0 ? 'text-red-600' :
-                          item.stock <= item.threshold ? 'text-yellow-600' :
-                          'text-green-600'
-                        }`}>
-                          {item.stock}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 text-sm text-gray-500">{item.threshold}</td>
-                      <td className="px-6 py-4 text-sm text-gray-500">{item.unit || 'pcs'}</td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`px-2 py-1 text-xs font-semibold rounded-full ${status.color}`}>
-                          {status.label}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm space-x-2">
-                        <button 
-                          onClick={() => handleViewDetails(item)}
-                          className="text-blue-600 hover:text-blue-900 font-medium"
-                        >
-                          View
-                        </button>
-                        {item.stock <= item.threshold && (
-                          <button 
-                            onClick={() => handleRequestStock(item)}
-                            className="text-green-600 hover:text-green-900 font-medium"
-                          >
-                            Request
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                }) : (
+                {filteredInventory.length > 0 ? filteredInventory.map((item) => (
+                  <tr key={item.id} className="hover:bg-gray-50">
+                    <td className="px-6 py-4 text-sm font-medium">{item.productName}</td>
+                    <td className="px-6 py-4 text-sm">{item.productType}</td>
+                    <td className="px-6 py-4 text-sm">{item.size}</td>
+                    <td className="px-6 py-4 text-sm font-bold text-blue-600">{item.totalReceived}</td>
+                    <td className="px-6 py-4 text-sm">{item.unit}</td>
+                    <td className="px-6 py-4 text-sm">
+                      <span className="px-2 py-1 bg-green-100 text-green-800 text-xs font-semibold rounded-full">
+                        {item.requestCount} request{item.requestCount !== 1 ? 's' : ''}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-sm text-gray-500">
+                      {item.lastReceived ? item.lastReceived.toLocaleDateString() : 'N/A'}
+                    </td>
+                  </tr>
+                )) : (
                   <tr>
-                    <td colSpan="8" className="px-6 py-8 text-center text-gray-500">
-                      No inventory items found
+                    <td colSpan="7" className="px-6 py-12 text-center">
+                      <div className="flex flex-col items-center justify-center text-gray-500">
+                        <Package size={48} className="mb-4 text-gray-300" />
+                        <p className="text-lg font-medium mb-2">No items in your inventory yet</p>
+                        <p className="text-sm mb-4">Make a stock request to get items added to your inventory</p>
+                        <button 
+                          onClick={() => window.location.href = '/staff/request-stock'}
+                          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+                        >
+                          Request Stock
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 )}
@@ -281,81 +246,20 @@ const StaffInventory = () => {
           </div>
         </div>
 
-        {/* Details Modal */}
-        {showDetailsModal && selectedItem && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={() => setShowDetailsModal(false)}>
-            <div className="bg-white rounded-lg shadow-xl p-6 max-w-2xl w-full" onClick={(e) => e.stopPropagation()}>
-              <h2 className="text-xl font-bold mb-4">Item Details</h2>
-              
-              <div className="grid grid-cols-2 gap-4 mb-6">
-                <div>
-                  <p className="text-sm text-gray-500">Item Code</p>
-                  <p className="font-semibold">{selectedItem.code}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500">Product Name</p>
-                  <p className="font-semibold">{selectedItem.name}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500">Category</p>
-                  <p className="font-semibold">{selectedItem.category}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500">Unit of Measure</p>
-                  <p className="font-semibold">{selectedItem.unit || 'pcs'}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500">Current Stock</p>
-                  <p className={`font-semibold text-lg ${
-                    selectedItem.stock === 0 ? 'text-red-600' :
-                    selectedItem.stock <= selectedItem.threshold ? 'text-yellow-600' :
-                    'text-green-600'
-                  }`}>
-                    {selectedItem.stock}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500">Reorder Level</p>
-                  <p className="font-semibold">{selectedItem.threshold}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500">Unit Price</p>
-                  <p className="font-semibold">₱{selectedItem.price?.toFixed(2) || '0.00'}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500">Status</p>
-                  <span className={`inline-block px-2 py-1 text-xs font-semibold rounded-full ${getStockStatus(selectedItem).color}`}>
-                    {getStockStatus(selectedItem).label}
-                  </span>
-                </div>
-              </div>
-
-              {selectedItem.description && (
-                <div className="mb-6">
-                  <p className="text-sm text-gray-500 mb-1">Description</p>
-                  <p className="text-sm bg-gray-50 p-3 rounded">{selectedItem.description}</p>
-                </div>
-              )}
-
-              <div className="flex justify-end space-x-3">
-                {selectedItem.stock <= selectedItem.threshold && (
-                  <button 
-                    onClick={() => handleRequestStock(selectedItem)}
-                    className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition"
-                  >
-                    Request Stock
-                  </button>
-                )}
-                <button 
-                  onClick={() => setShowDetailsModal(false)}
-                  className="px-4 py-2 border rounded-lg hover:bg-gray-100 transition"
-                >
-                  Close
-                </button>
-              </div>
+        {/* Info Box */}
+        <div className="mt-8 bg-blue-50 border border-blue-200 rounded-lg p-4">
+          <div className="flex items-start">
+            <AlertCircle className="text-blue-600 mr-3 flex-shrink-0 mt-0.5" size={20} />
+            <div className="text-sm text-blue-800">
+              <p className="font-semibold mb-1">About Your Inventory</p>
+              <p>
+                This inventory shows all items you have received through approved stock requests. 
+                The quantities shown are cumulative totals from all your approved requests. 
+                To request more items, go to the "Request Stock" page.
+              </p>
             </div>
           </div>
-        )}
+        </div>
       </main>
     </div>
   );

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { RefreshCw, AlertCircle, ShoppingCart, Check } from 'react-feather';
+import { RefreshCw, AlertCircle, ShoppingCart, Check, Search, Filter } from 'react-feather';
 import StaffSidebar from '../components/StaffSidebar';
 import inventoryService from '../services/inventoryService';
 import requestService from '../services/requestService';
@@ -10,7 +10,7 @@ const StaffRequestStock = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [inventory, setInventory] = useState([]);
-  const [categories, setCategories] = useState([]);
+  const [productTypes, setProductTypes] = useState([]);
   const [submitting, setSubmitting] = useState(false);
   
   // Form state
@@ -23,7 +23,7 @@ const StaffRequestStock = () => {
   
   // Filters for inventory selection
   const [search, setSearch] = useState('');
-  const [categoryFilter, setCategoryFilter] = useState('All Categories');
+  const [productTypeFilter, setProductTypeFilter] = useState('All Product Types');
   
   const user = authService.getStoredUser();
 
@@ -32,16 +32,16 @@ const StaffRequestStock = () => {
       setLoading(true);
       setError(null);
       
-      const [inventoryRes, categoriesRes] = await Promise.all([
+      const [inventoryRes, productTypesRes] = await Promise.all([
         inventoryService.getAll(),
-        inventoryService.getCategories()
+        inventoryService.getProductTypes()
       ]);
       
       const mappedInventory = dataMapper.mapInventoryList(inventoryRes.data);
-      const mappedCategories = dataMapper.mapCategoryList(categoriesRes.data);
+      const mappedProductTypes = dataMapper.mapProductTypeList(productTypesRes.data);
       
       setInventory(mappedInventory);
-      setCategories(mappedCategories);
+      setProductTypes(mappedProductTypes);
     } catch (err) {
       console.error('Inventory fetch error:', err);
       setError(err.response?.data?.message || err.message || 'Failed to load inventory');
@@ -72,10 +72,9 @@ const StaffRequestStock = () => {
   }, [formData.inventoryId, inventory]);
 
   const filteredInventory = inventory.filter((item) => {
-    const matchesSearch = item.name?.toLowerCase().includes(search.toLowerCase()) ||
-                         item.code?.toLowerCase().includes(search.toLowerCase());
-    const matchesCategory = categoryFilter === 'All Categories' || item.category === categoryFilter;
-    return matchesSearch && matchesCategory;
+    const matchesSearch = item.name?.toLowerCase().includes(search.toLowerCase());
+    const matchesProductType = productTypeFilter === 'All Product Types' || item.productType === productTypeFilter;
+    return matchesSearch && matchesProductType;
   });
 
   const handleInputChange = (e) => {
@@ -140,22 +139,20 @@ const StaffRequestStock = () => {
     setFormData({
       inventoryId: item.id,
       productName: item.name,
-      quantity: Math.max(1, item.threshold - item.stock),
-      reason: `Restocking low inventory item: ${item.name}`
+      quantity: 1,
+      reason: `Requesting ${item.name} for operational needs`
     });
     
     // Scroll to form
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const lowStockItems = inventory.filter(item => item.stock <= item.threshold);
-
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-100">
         <div className="text-center">
           <RefreshCw className="animate-spin h-12 w-12 text-blue-600 mx-auto mb-4" />
-          <p className="text-gray-600">Loading...</p>
+          <p className="text-gray-600">Loading available items...</p>
         </div>
       </div>
     );
@@ -169,7 +166,7 @@ const StaffRequestStock = () => {
         <div className="flex justify-between items-center mb-8">
           <div>
             <h1 className="text-2xl font-bold text-gray-800">Request Stock</h1>
-            <p className="text-gray-600">Submit a new stock request to the admin</p>
+            <p className="text-gray-600">Request items from the warehouse inventory</p>
           </div>
           <button 
             onClick={fetchInventory}
@@ -198,7 +195,7 @@ const StaffRequestStock = () => {
             </div>
             <div>
               <h2 className="text-xl font-bold">New Stock Request</h2>
-              <p className="text-gray-600 text-sm">Fill in the details below</p>
+              <p className="text-gray-600 text-sm">Select an item and specify quantity</p>
             </div>
           </div>
 
@@ -218,7 +215,7 @@ const StaffRequestStock = () => {
                   <option value="">-- Select an item --</option>
                   {inventory.map(item => (
                     <option key={item.id} value={item.id}>
-                      {item.code} - {item.name} (Stock: {item.stock})
+                      {item.name} - Size: {item.size} (Stock: {item.stock})
                     </option>
                   ))}
                 </select>
@@ -255,7 +252,7 @@ const StaffRequestStock = () => {
                 required
               />
               <p className="text-xs text-gray-500 mt-1">
-                Provide context like: low inventory, upcoming promotion, customer demand, etc.
+                Provide context like: operational needs, project requirements, customer demand, etc.
               </p>
             </div>
 
@@ -289,47 +286,97 @@ const StaffRequestStock = () => {
           </form>
         </div>
 
-        {/* Low Stock Items - Quick Request */}
-        {lowStockItems.length > 0 && (
-          <div className="bg-white rounded-lg shadow overflow-hidden">
-            <div className="p-6 border-b">
-              <h3 className="font-semibold text-lg">Low Stock Items - Quick Request</h3>
-              <p className="text-sm text-gray-600 mt-1">Click to quickly request these items</p>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    {['Code', 'Product Name', 'Current Stock', 'Threshold', 'Shortage', 'Quick Action'].map((h) => (
-                      <th key={h} className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {lowStockItems.map((item) => (
-                    <tr key={item.id} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 text-sm font-medium text-gray-900">{item.code}</td>
-                      <td className="px-6 py-4 text-sm text-gray-500">{item.name}</td>
-                      <td className="px-6 py-4 text-sm text-red-600 font-semibold">{item.stock}</td>
-                      <td className="px-6 py-4 text-sm text-gray-500">{item.threshold}</td>
-                      <td className="px-6 py-4 text-sm text-red-600 font-semibold">
-                        {Math.max(0, item.threshold - item.stock)}
-                      </td>
-                      <td className="px-6 py-4 text-sm">
-                        <button
-                          onClick={() => handleQuickRequest(item)}
-                          className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 transition text-xs font-medium"
-                        >
-                          Quick Request
-                        </button>
-                      </td>
-                    </tr>
+        {/* Available Items */}
+        <div className="bg-white rounded-lg shadow overflow-hidden">
+          <div className="p-6 border-b">
+            <h3 className="font-semibold text-lg">Available Items from Warehouse</h3>
+            <p className="text-sm text-gray-600 mt-1">Browse and request items from the warehouse inventory</p>
+          </div>
+          
+          {/* Filters */}
+          <div className="p-6 bg-gray-50 border-b">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <Search size={16} className="inline mr-2" />
+                  Search Items
+                </label>
+                <input 
+                  type="text" 
+                  placeholder="Search by product name..." 
+                  className="w-full border rounded-lg px-3 py-2" 
+                  value={search} 
+                  onChange={(e) => setSearch(e.target.value)} 
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <Filter size={16} className="inline mr-2" />
+                  Product Type
+                </label>
+                <select 
+                  className="w-full border rounded-lg px-3 py-2" 
+                  value={productTypeFilter} 
+                  onChange={(e) => setProductTypeFilter(e.target.value)}
+                >
+                  <option>All Product Types</option>
+                  {productTypes.map(type => (
+                    <option key={type.id} value={type.name}>{type.name}</option>
                   ))}
-                </tbody>
-              </table>
+                </select>
+              </div>
             </div>
           </div>
-        )}
+
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  {['Product Name', 'Product Type', 'Size', 'Type/Color', 'Available Stock', 'Price', 'Actions'].map((h) => (
+                    <th key={h} className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {filteredInventory.length > 0 ? filteredInventory.map((item) => (
+                  <tr key={item.id} className="hover:bg-gray-50">
+                    <td className="px-6 py-4 text-sm font-medium text-gray-900">{item.name}</td>
+                    <td className="px-6 py-4 text-sm text-gray-500">{item.productType || 'N/A'}</td>
+                    <td className="px-6 py-4 text-sm text-gray-500">{item.size || 'N/A'}</td>
+                    <td className="px-6 py-4 text-sm text-gray-500">{item.unit || 'N/A'}</td>
+                    <td className="px-6 py-4 text-sm">
+                      <span className={`font-semibold ${
+                        item.stock === 0 ? 'text-red-600' :
+                        item.stock <= 10 ? 'text-yellow-600' :
+                        'text-green-600'
+                      }`}>
+                        {item.stock}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-sm text-gray-500">₱{item.price?.toFixed(2) || '0.00'}</td>
+                    <td className="px-6 py-4 text-sm">
+                      <button
+                        onClick={() => handleQuickRequest(item)}
+                        disabled={item.stock === 0}
+                        className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 transition text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {item.stock === 0 ? 'Out of Stock' : 'Request'}
+                      </button>
+                    </td>
+                  </tr>
+                )) : (
+                  <tr>
+                    <td colSpan="7" className="px-6 py-12 text-center text-gray-500">
+                      <ShoppingCart size={48} className="mx-auto mb-3 text-gray-300" />
+                      <p className="font-medium">No items available</p>
+                      <p className="text-sm mt-1">Please try adjusting your filters</p>
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
       </main>
     </div>
   );

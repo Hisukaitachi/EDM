@@ -50,10 +50,11 @@ const AdminStockRequests = () => {
   }, []);
 
   const filteredRequests = requests.filter((req) => {
-    const matchesSearch = req.code?.toLowerCase().includes(search.toLowerCase()) ||
-                         req.storeName?.toLowerCase().includes(search.toLowerCase()) ||
-                         req.requestedBy?.toLowerCase().includes(search.toLowerCase()) ||
-                         req.productName?.toLowerCase().includes(search.toLowerCase());
+    const matchesSearch = 
+      req.requestedBy?.toLowerCase().includes(search.toLowerCase()) ||
+      req.productName?.toLowerCase().includes(search.toLowerCase()) ||
+      req.code?.toLowerCase().includes(search.toLowerCase());
+    
     const matchesStatus = statusFilter === 'All Status' || req.status === statusFilter;
     return matchesSearch && matchesStatus;
   });
@@ -80,7 +81,7 @@ const AdminStockRequests = () => {
     setActionLoading(true);
     try {
       await requestService.process(selectedRequest.id, {
-        status: 'Approved',
+        status: 'approved', // Changed to lowercase to match backend expectations
         notes: 'Approved by admin'
       });
       
@@ -90,7 +91,8 @@ const AdminStockRequests = () => {
       fetchRequests();
     } catch (err) {
       console.error('Approve error:', err);
-      alert(err.response?.data?.message || err.message || 'Failed to approve request');
+      const errorMessage = err.response?.data?.message || err.message || 'Failed to approve request';
+      alert(errorMessage);
     } finally {
       setActionLoading(false);
     }
@@ -106,7 +108,7 @@ const AdminStockRequests = () => {
     setActionLoading(true);
     try {
       await requestService.process(selectedRequest.id, {
-        status: 'Rejected',
+        status: 'rejected', // Changed to lowercase to match backend expectations
         notes: rejectionNotes
       });
       
@@ -117,7 +119,8 @@ const AdminStockRequests = () => {
       fetchRequests();
     } catch (err) {
       console.error('Reject error:', err);
-      alert(err.response?.data?.message || err.message || 'Failed to reject request');
+      const errorMessage = err.response?.data?.message || err.message || 'Failed to reject request';
+      alert(errorMessage);
     } finally {
       setActionLoading(false);
     }
@@ -153,6 +156,7 @@ const AdminStockRequests = () => {
             <button 
               onClick={fetchRequests}
               className="p-2 rounded-lg hover:bg-gray-200 transition"
+              title="Refresh"
             >
               <RefreshCw size={20} />
             </button>
@@ -176,7 +180,7 @@ const AdminStockRequests = () => {
               <label className="block text-sm font-medium text-gray-700 mb-1">Search</label>
               <input 
                 type="text" 
-                placeholder="Search requests..." 
+                placeholder="Search by request ID, product, or requestor..." 
                 className="w-full border rounded-lg px-3 py-2" 
                 value={search} 
                 onChange={(e) => setSearch(e.target.value)} 
@@ -193,6 +197,7 @@ const AdminStockRequests = () => {
                 <option>Pending</option>
                 <option>Approved</option>
                 <option>Rejected</option>
+                <option>Completed</option>
               </select>
             </div>
           </div>
@@ -213,53 +218,58 @@ const AdminStockRequests = () => {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {filteredRequests.length > 0 ? filteredRequests.map((req) => (
-                  <tr key={req.id}>
-                    <td className="px-6 py-4 text-sm font-medium">{req.code}</td>
-                    <td className="px-6 py-4 text-sm">{req.productName || 'N/A'}</td>
-                    <td className="px-6 py-4 text-sm font-semibold">{req.quantityRequested}</td>
-                    <td className="px-6 py-4 text-sm">{req.requestedBy || 'Unknown'}</td>
-                    <td className="px-6 py-4 text-sm">
-                      {req.createdAt ? new Date(req.createdAt).toLocaleDateString() : 'N/A'}
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
-                        req.status === 'Approved' ? 'bg-green-100 text-green-800' :
-                        req.status === 'Pending' ? 'bg-yellow-100 text-yellow-800' :
-                        'bg-red-100 text-red-800'
-                      }`}>
-                        {req.status}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-sm space-x-2">
-                      <button 
-                        onClick={() => handleViewDetails(req)}
-                        className="text-blue-600 hover:text-blue-900"
-                        title="View Details"
-                      >
-                        View
-                      </button>
-                      {req.status === 'Pending' && (
-                        <>
-                          <button 
-                            onClick={() => handleApproveClick(req)}
-                            className="text-green-600 hover:text-green-900"
-                            title="Approve"
-                          >
-                            Approve
-                          </button>
-                          <button 
-                            onClick={() => handleRejectClick(req)}
-                            className="text-red-600 hover:text-red-900"
-                            title="Reject"
-                          >
-                            Reject
-                          </button>
-                        </>
-                      )}
-                    </td>
-                  </tr>
-                )) : (
+                {filteredRequests.length > 0 ? filteredRequests.map((req) => {
+                  // Normalize status for display (capitalize first letter)
+                  const displayStatus = req.status?.charAt(0).toUpperCase() + req.status?.slice(1).toLowerCase();
+                  
+                  return (
+                    <tr key={req.id}>
+                      <td className="px-6 py-4 text-sm font-medium">{req.code || `#${req.id}`}</td>
+                      <td className="px-6 py-4 text-sm">{req.productName || 'N/A'}</td>
+                      <td className="px-6 py-4 text-sm font-semibold">{req.quantityRequested}</td>
+                      <td className="px-6 py-4 text-sm">{req.requestedBy || 'Unknown'}</td>
+                      <td className="px-6 py-4 text-sm">
+                        {req.createdAt ? new Date(req.createdAt).toLocaleDateString() : 'N/A'}
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
+                          displayStatus === 'Approved' || displayStatus === 'Completed' ? 'bg-green-100 text-green-800' :
+                          displayStatus === 'Pending' ? 'bg-yellow-100 text-yellow-800' :
+                          'bg-red-100 text-red-800'
+                        }`}>
+                          {displayStatus}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-sm space-x-2">
+                        <button 
+                          onClick={() => handleViewDetails(req)}
+                          className="text-blue-600 hover:text-blue-900"
+                          title="View Details"
+                        >
+                          View
+                        </button>
+                        {displayStatus === 'Pending' && (
+                          <>
+                            <button 
+                              onClick={() => handleApproveClick(req)}
+                              className="text-green-600 hover:text-green-900"
+                              title="Approve"
+                            >
+                              Approve
+                            </button>
+                            <button 
+                              onClick={() => handleRejectClick(req)}
+                              className="text-red-600 hover:text-red-900"
+                              title="Reject"
+                            >
+                              Reject
+                            </button>
+                          </>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                }) : (
                   <tr>
                     <td colSpan="7" className="px-6 py-4 text-center text-gray-500">
                       No stock requests found
@@ -285,15 +295,11 @@ const AdminStockRequests = () => {
               <div className="grid grid-cols-2 gap-4 mb-6">
                 <div>
                   <p className="text-sm text-gray-500">Request ID</p>
-                  <p className="font-semibold">{selectedRequest.code}</p>
+                  <p className="font-semibold">{selectedRequest.code || `#${selectedRequest.id}`}</p>
                 </div>
                 <div>
                   <p className="text-sm text-gray-500">Product</p>
                   <p className="font-semibold">{selectedRequest.productName}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500">Product Code</p>
-                  <p className="font-semibold">{selectedRequest.productCode}</p>
                 </div>
                 <div>
                   <p className="text-sm text-gray-500">Quantity Requested</p>
@@ -312,17 +318,25 @@ const AdminStockRequests = () => {
                 <div>
                   <p className="text-sm text-gray-500">Status</p>
                   <span className={`inline-block px-2 py-1 text-xs font-semibold rounded-full ${
-                    selectedRequest.status === 'Approved' ? 'bg-green-100 text-green-800' :
+                    selectedRequest.status === 'Approved' || selectedRequest.status === 'Completed' ? 'bg-green-100 text-green-800' :
                     selectedRequest.status === 'Pending' ? 'bg-yellow-100 text-yellow-800' :
                     'bg-red-100 text-red-800'
                   }`}>
-                    {selectedRequest.status}
+                    {selectedRequest.status?.charAt(0).toUpperCase() + selectedRequest.status?.slice(1).toLowerCase()}
                   </span>
                 </div>
                 {selectedRequest.approvedBy && (
                   <div>
-                    <p className="text-sm text-gray-500">Approved By</p>
+                    <p className="text-sm text-gray-500">Approved/Rejected By</p>
                     <p className="font-semibold">{selectedRequest.approvedBy}</p>
+                  </div>
+                )}
+                {selectedRequest.approvalDate && (
+                  <div>
+                    <p className="text-sm text-gray-500">Approval Date</p>
+                    <p className="font-semibold">
+                      {new Date(selectedRequest.approvalDate).toLocaleString()}
+                    </p>
                   </div>
                 )}
               </div>
@@ -336,7 +350,9 @@ const AdminStockRequests = () => {
 
               {selectedRequest.approvalNotes && (
                 <div className="mb-6">
-                  <h3 className="font-semibold mb-2">Approval Notes</h3>
+                  <h3 className="font-semibold mb-2">
+                    {selectedRequest.status === 'Rejected' ? 'Rejection Notes' : 'Approval Notes'}
+                  </h3>
                   <p className="text-sm text-gray-600 bg-gray-50 p-3 rounded">{selectedRequest.approvalNotes}</p>
                 </div>
               )}
@@ -387,7 +403,7 @@ const AdminStockRequests = () => {
               </div>
               
               <p className="text-gray-600 mb-6">
-                Are you sure you want to approve request <strong>{selectedRequest.code}</strong> for <strong>{selectedRequest.productName}</strong>?
+                Are you sure you want to approve request <strong>{selectedRequest.code || `#${selectedRequest.id}`}</strong> for <strong>{selectedRequest.quantityRequested}</strong> units of <strong>{selectedRequest.productName}</strong>?
               </p>
 
               <div className="flex justify-end space-x-3">
@@ -422,7 +438,7 @@ const AdminStockRequests = () => {
               </div>
               
               <p className="text-gray-600 mb-4">
-                Rejecting request <strong>{selectedRequest.code}</strong> for <strong>{selectedRequest.productName}</strong>.
+                Rejecting request <strong>{selectedRequest.code || `#${selectedRequest.id}`}</strong> for <strong>{selectedRequest.productName}</strong>.
               </p>
 
               <div className="mb-6">
@@ -433,6 +449,7 @@ const AdminStockRequests = () => {
                   placeholder="Please provide a reason for rejection..."
                   value={rejectionNotes}
                   onChange={(e) => setRejectionNotes(e.target.value)}
+                  disabled={actionLoading}
                 />
               </div>
 

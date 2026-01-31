@@ -1,3 +1,4 @@
+// backend/src/controllers/inventoryController.js
 const inventoryService = require('../services/inventoryService');
 
 const inventoryController = {
@@ -6,7 +7,7 @@ const inventoryController = {
     try {
       const filters = {
         status: req.query.status,
-        categoryId: req.query.categoryId
+        productTypeId: req.query.productTypeId // Changed from categoryId
       };
 
       const items = await inventoryService.getAllInventory(filters);
@@ -40,12 +41,12 @@ const inventoryController = {
     try {
       const productData = {
         productName: req.body.productName,
-        productCode: req.body.productCode,
-        categoryId: req.body.categoryId || null,
+        // productCode REMOVED
+        productTypeId: req.body.productTypeId || null, // Changed from categoryId
         description: req.body.description || null,
         unitPrice: req.body.unitPrice,
         quantity: req.body.quantity || 0,
-        reorderLevel: req.body.reorderLevel || 10,
+        size: req.body.size || 10, // Changed from reorderLevel
         unitOfMeasure: req.body.unitOfMeasure || 'pcs'
       };
 
@@ -66,10 +67,10 @@ const inventoryController = {
     try {
       const productData = {
         productName: req.body.productName,
-        categoryId: req.body.categoryId,
+        productTypeId: req.body.productTypeId, // Changed from categoryId
         description: req.body.description,
         unitPrice: req.body.unitPrice,
-        reorderLevel: req.body.reorderLevel,
+        size: req.body.size, // Changed from reorderLevel
         unitOfMeasure: req.body.unitOfMeasure
       };
 

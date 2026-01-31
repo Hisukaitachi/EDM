@@ -7,7 +7,7 @@ const inventoryRoutes = require('./inventoryRoutes');
 const requestRoutes = require('./requestRoutes');
 const userRoutes = require('./userRoutes');
 const reportRoutes = require('./reportRoutes');
-const categoryRoutes = require('./categoryRoutes'); // NEW
+const productRoutes = require('./productRoutes'); // NEW
 
 // Route prefixes
 router.use('/auth', authRoutes);
@@ -15,6 +15,6 @@ router.use('/inventory', inventoryRoutes);
 router.use('/requests', requestRoutes);
 router.use('/users', userRoutes);
 router.use('/reports', reportRoutes);
-router.use('/categories', categoryRoutes); // NEW
+router.use('/product', productRoutes); // NEW
 
 module.exports = router;

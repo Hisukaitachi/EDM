@@ -6,13 +6,13 @@ export const dataMapper = {
   mapInventoryItem: (backendItem) => {
     return {
       id: backendItem.inventory_id,
-      code: backendItem.product_code,
+      // code: backendItem.product_code, // REMOVED - field no longer exists
       name: backendItem.product_name,
-      category: backendItem.category_name,
-      categoryId: backendItem.category_id,
+      productType: backendItem.product_type_name, // CHANGED from category_name
+      productTypeId: backendItem.product_type_id, // CHANGED from category_id
       description: backendItem.description,
       stock: backendItem.quantity_in_stock,
-      threshold: backendItem.reorder_level,
+      size: backendItem.size, // CHANGED from reorder_level
       unit: backendItem.unit_of_measure,
       price: parseFloat(backendItem.unit_price),
       status: backendItem.status,
@@ -26,19 +26,28 @@ export const dataMapper = {
     return (backendList || []).map(item => dataMapper.mapInventoryItem(item));
   },
 
-  // Map backend category to frontend format
-  mapCategory: (backendCategory) => {
+  // Map backend product type to frontend format (changed from mapCategory)
+  mapProductType: (backendProductType) => {
     return {
-      id: backendCategory.category_id,
-      name: backendCategory.category_name,
-      description: backendCategory.description,
-      createdAt: backendCategory.created_at
+      id: backendProductType.product_type_id, // CHANGED from category_id
+      name: backendProductType.product_type_name, // CHANGED from category_name
+      description: backendProductType.description,
+      createdAt: backendProductType.created_at
     };
   },
 
-  // Map array of backend categories
+  // Map array of backend product types (changed from mapCategoryList)
+  mapProductTypeList: (backendList) => {
+    return (backendList || []).map(type => dataMapper.mapProductType(type));
+  },
+
+  // Keep old method names for backward compatibility (optional - can be removed)
+  mapCategory: (backendCategory) => {
+    return dataMapper.mapProductType(backendCategory);
+  },
+
   mapCategoryList: (backendList) => {
-    return (backendList || []).map(cat => dataMapper.mapCategory(cat));
+    return dataMapper.mapProductTypeList(backendList);
   },
 
   // Map backend stock request to frontend format
@@ -48,7 +57,7 @@ export const dataMapper = {
       code: `REQ-${String(backendRequest.request_id).padStart(5, '0')}`,
       inventoryId: backendRequest.inventory_id,
       productName: backendRequest.product_name,
-      productCode: backendRequest.product_code,
+      // productCode: backendRequest.product_code, // REMOVED - field no longer exists
       storeName: 'Main Warehouse', // Backend doesn't have this field
       requestedBy: backendRequest.requested_by_name,
       requestedById: backendRequest.requested_by,
@@ -110,11 +119,11 @@ export const dataMapper = {
   mapLowStockItem: (backendItem) => {
     return {
       id: backendItem.inventory_id,
-      code: backendItem.product_code,
+      // code: backendItem.product_code, // REMOVED - field no longer exists
       name: backendItem.product_name,
-      category: backendItem.category_name,
+      productType: backendItem.product_type_name, // CHANGED from category_name
       stock: backendItem.quantity_in_stock,
-      threshold: backendItem.reorder_level,
+      size: backendItem.size, // CHANGED from reorder_level
       shortage: backendItem.shortage_quantity,
       unitPrice: parseFloat(backendItem.unit_price),
       reorderCost: parseFloat(backendItem.reorder_cost_estimate),
